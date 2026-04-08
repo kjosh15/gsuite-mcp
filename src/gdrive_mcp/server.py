@@ -103,3 +103,42 @@ async def upload_file(
         "version": result.get("version", ""),
         "modified_time": result.get("modifiedTime", ""),
     }
+
+
+@mcp.tool()
+async def search_files(
+    query: str,
+    max_results: int = 10,
+) -> dict[str, Any]:
+    """Search Google Drive for files. Uses Drive API query syntax.
+
+    Examples:
+    - name contains 'Stakeholder'
+    - mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    - 'folder_id' in parents and trashed = false
+    """
+    service = get_drive_service()
+
+    response = await asyncio.to_thread(
+        lambda: service.files()
+        .list(
+            q=query,
+            pageSize=max_results,
+            fields="files(id,name,mimeType,modifiedTime,webViewLink,parents)",
+        )
+        .execute()
+    )
+
+    return {
+        "files": [
+            {
+                "file_id": f["id"],
+                "name": f["name"],
+                "mime_type": f.get("mimeType", ""),
+                "modified_time": f.get("modifiedTime", ""),
+                "web_view_link": f.get("webViewLink", ""),
+                "parents": f.get("parents", []),
+            }
+            for f in response.get("files", [])
+        ]
+    }
