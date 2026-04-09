@@ -142,3 +142,29 @@ async def search_files(
             for f in response.get("files", [])
         ]
     }
+
+
+@mcp.tool()
+async def get_file_metadata(file_id: str) -> dict[str, Any]:
+    """Get metadata for a Google Drive file without downloading its content."""
+    service = get_drive_service()
+
+    metadata = await asyncio.to_thread(
+        lambda: service.files()
+        .get(
+            fileId=file_id,
+            fields="id,name,mimeType,size,modifiedTime,webViewLink,parents,capabilities",
+        )
+        .execute()
+    )
+
+    return {
+        "file_id": metadata["id"],
+        "name": metadata["name"],
+        "mime_type": metadata.get("mimeType", ""),
+        "size_bytes": int(metadata.get("size", 0)),
+        "modified_time": metadata.get("modifiedTime", ""),
+        "web_view_link": metadata.get("webViewLink", ""),
+        "parents": metadata.get("parents", []),
+        "capabilities": metadata.get("capabilities", {}),
+    }
