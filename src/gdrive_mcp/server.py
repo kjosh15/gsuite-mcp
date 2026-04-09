@@ -3,6 +3,9 @@
 import asyncio
 import base64
 import io
+import logging
+import os
+import sys
 from typing import Any, Optional
 
 from googleapiclient.http import MediaIoBaseUpload
@@ -168,3 +171,22 @@ async def get_file_metadata(file_id: str) -> dict[str, Any]:
         "parents": metadata.get("parents", []),
         "capabilities": metadata.get("capabilities", {}),
     }
+
+
+def main() -> None:
+    """Run the MCP server."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        stream=sys.stderr,
+        force=True,
+    )
+    import uvicorn
+
+    app = mcp.http_app(stateless_http=True)
+    port = int(os.environ.get("PORT", "8080"))
+    uvicorn.run(app, host="0.0.0.0", port=port)
+
+
+if __name__ == "__main__":
+    main()
