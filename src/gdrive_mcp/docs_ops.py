@@ -31,3 +31,24 @@ async def append_text_to_doc(
         .execute()
     )
     return {"bytes_appended": len(text.encode("utf-8"))}
+
+
+async def replace_all_text(
+    docs_service, file_id: str, find: str, replace: str, match_case: bool
+) -> int:
+    """Exact-match replace across a Google Doc. Returns occurrence count."""
+    requests = [
+        {
+            "replaceAllText": {
+                "containsText": {"text": find, "matchCase": match_case},
+                "replaceText": replace,
+            }
+        }
+    ]
+    resp = await asyncio.to_thread(
+        lambda: docs_service.documents()
+        .batchUpdate(documentId=file_id, body={"requests": requests})
+        .execute()
+    )
+    reply = resp.get("replies", [{}])[0]
+    return reply.get("replaceAllText", {}).get("occurrencesChanged", 0)
