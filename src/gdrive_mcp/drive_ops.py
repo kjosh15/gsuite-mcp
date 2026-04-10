@@ -146,3 +146,112 @@ async def get_files_metadata(
         else:
             results.append(outcome)
     return {"results": results, "errors": errors}
+
+
+async def list_comments(
+    service, file_id: str, include_resolved: bool
+) -> dict[str, Any]:
+    resp = await asyncio.to_thread(
+        lambda: service.comments()
+        .list(
+            fileId=file_id,
+            includeDeleted=False,
+            fields=(
+                "comments(id,content,createdTime,author,resolved,anchor,"
+                "replies(id,content,createdTime,author))"
+            ),
+        )
+        .execute()
+    )
+    comments = resp.get("comments", [])
+    if not include_resolved:
+        comments = [c for c in comments if not c.get("resolved", False)]
+    return {
+        "comments": [
+            {
+                "comment_id": c["id"],
+                "content": c.get("content", ""),
+                "created_time": c.get("createdTime", ""),
+                "author": c.get("author", {}).get("displayName", ""),
+                "resolved": c.get("resolved", False),
+                "anchor": c.get("anchor"),
+                "replies": [
+                    {
+                        "reply_id": r["id"],
+                        "content": r.get("content", ""),
+                        "created_time": r.get("createdTime", ""),
+                        "author": r.get("author", {}).get("displayName", ""),
+                    }
+                    for r in c.get("replies", [])
+                ],
+            }
+            for c in comments
+        ]
+    }
+
+
+async def create_comment(
+    service, file_id: str, content: str, anchor_text: Optional[str] = None
+) -> dict[str, Any]:
+    body: dict[str, Any] = {"content": content}
+    # anchor_text currently best-effort: Drive's anchor format is complex;
+    # we store it in the comment content if anchor_text is provided but
+    # not a full structured anchor. Future v2 could implement structured anchors.
+    if anchor_text:
+        body["content"] = f"[re: '{anchor_text}'] {content}"
+    resp = await asyncio.to_thread(
+        lambda: service.comments()
+        .create(
+            fileId=file_id,
+            body=body,
+            fields="id,content,createdTime,author",
+        )
+        .execute()
+    )
+    return {
+        "comment_id": resp["id"],
+        "content": resp.get("content", ""),
+        "created_time": resp.get("createdTime", ""),
+        "author": resp.get("author", {}).get("displayName", ""),
+    }
+
+
+async def reply_to_comment(
+    service, file_id: str, comment_id: str, content: str
+) -> dict[str, Any]:
+    resp = await asyncio.to_thread(
+        lambda: service.replies()
+        .create(
+            fileId=file_id,
+            commentId=comment_id,
+            body={"content": content},
+            fields="id,content,createdTime,author",
+        )
+        .execute()
+    )
+    return {
+        "reply_id": resp["id"],
+        "content": resp.get("content", ""),
+        "created_time": resp.get("createdTime", ""),
+        "author": resp.get("author", {}).get("displayName", ""),
+    }
+
+
+async def resolve_comment(
+    service, file_id: str, comment_id: str
+) -> dict[str, Any]:
+    resp = await asyncio.to_thread(
+        lambda: service.comments()
+        .update(
+            fileId=file_id,
+            commentId=comment_id,
+            body={"resolved": True},
+            fields="id,content,resolved",
+        )
+        .execute()
+    )
+    return {
+        "comment_id": resp["id"],
+        "content": resp.get("content", ""),
+        "resolved": resp.get("resolved", False),
+    }
