@@ -71,6 +71,59 @@ async def get_files_metadata(file_ids: list[str]) -> dict[str, Any]:
     return await drive_ops.get_files_metadata(auth.get_drive_service(), file_ids)
 
 
+@mcp.tool()
+async def append_to_file(
+    file_id: str,
+    content: str,
+    separator: str = "\n",
+) -> dict[str, Any]:
+    """Append content to a file. Uses native API where possible.
+
+    - Google Docs: Docs API batchUpdate InsertText (preserves formatting)
+    - Google Sheets: Sheets API values.append (rows split on newline, cols on comma)
+    - Other files: download-concat-upload fallback
+
+    Returns {file_id, file_name, mime_type, bytes_appended, modified_time, mode}.
+    """
+    drive = auth.get_drive_service()
+    meta = await asyncio.to_thread(
+        lambda: drive.files()
+        .get(fileId=file_id, fields="name,mimeType,modifiedTime")
+        .execute()
+    )
+    mime = meta.get("mimeType", "")
+    name = meta.get("name", "")
+
+    if mime == GOOGLE_DOC_MIME:
+        docs = auth.get_docs_service()
+        ops_result = await docs_ops.append_text_to_doc(
+            docs, file_id, separator + content
+        )
+        mode = "docs_native"
+        # refresh modifiedTime
+        meta2 = await asyncio.to_thread(
+            lambda: drive.files()
+            .get(fileId=file_id, fields="modifiedTime")
+            .execute()
+        )
+        modified_time = meta2.get("modifiedTime", "")
+    elif mime == GOOGLE_SHEET_MIME:
+        # implemented in Task 10
+        raise NotImplementedError("Sheets path added in Task 10")
+    else:
+        # implemented in Task 11
+        raise NotImplementedError("Plain-file path added in Task 11")
+
+    return {
+        "file_id": file_id,
+        "file_name": name,
+        "mime_type": mime,
+        "bytes_appended": ops_result["bytes_appended"],
+        "modified_time": modified_time,
+        "mode": mode,
+    }
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
