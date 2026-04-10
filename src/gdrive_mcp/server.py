@@ -146,6 +146,55 @@ async def append_to_file(
     }
 
 
+@mcp.tool()
+async def replace_text(
+    file_id: str,
+    find: str,
+    replace: str,
+    match_case: bool = True,
+    regex: bool = False,
+) -> dict[str, Any]:
+    """Replace text in a Google Doc. Exact match by default; regex optional.
+
+    Only works on Google Docs (mimeType application/vnd.google-apps.document).
+    For real .docx files, use docx_suggest_edit instead.
+    """
+    drive = auth.get_drive_service()
+    meta = await asyncio.to_thread(
+        lambda: drive.files()
+        .get(fileId=file_id, fields="name,mimeType,modifiedTime")
+        .execute()
+    )
+    if meta.get("mimeType") != GOOGLE_DOC_MIME:
+        return {
+            "error": "NOT_A_GOOGLE_DOC",
+            "retryable": False,
+            "message": (
+                f"replace_text only works on Google Docs. This file is "
+                f"{meta.get('mimeType')}. For real .docx files, use "
+                f"docx_suggest_edit. For other files, download/edit/upload."
+            ),
+        }
+    docs = auth.get_docs_service()
+
+    if regex:
+        # Task 13: regex fallback
+        raise NotImplementedError("regex path added in Task 13")
+
+    count = await docs_ops.replace_all_text(docs, file_id, find, replace, match_case)
+    meta2 = await asyncio.to_thread(
+        lambda: drive.files()
+        .get(fileId=file_id, fields="modifiedTime")
+        .execute()
+    )
+    return {
+        "file_id": file_id,
+        "replacements_made": count,
+        "regex_mode": False,
+        "modified_time": meta2.get("modifiedTime", ""),
+    }
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
