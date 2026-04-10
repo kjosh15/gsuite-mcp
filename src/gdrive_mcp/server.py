@@ -179,8 +179,27 @@ async def replace_text(
     docs = auth.get_docs_service()
 
     if regex:
-        # Task 13: regex fallback
-        raise NotImplementedError("regex path added in Task 13")
+        try:
+            count = await docs_ops.replace_regex(
+                docs, file_id, find, replace, match_case
+            )
+        except re.error as e:
+            return {
+                "error": "INVALID_REGEX",
+                "retryable": False,
+                "message": f"Invalid regex pattern: {e}",
+            }
+        meta2 = await asyncio.to_thread(
+            lambda: drive.files()
+            .get(fileId=file_id, fields="modifiedTime")
+            .execute()
+        )
+        return {
+            "file_id": file_id,
+            "replacements_made": count,
+            "regex_mode": True,
+            "modified_time": meta2.get("modifiedTime", ""),
+        }
 
     count = await docs_ops.replace_all_text(docs, file_id, find, replace, match_case)
     meta2 = await asyncio.to_thread(
