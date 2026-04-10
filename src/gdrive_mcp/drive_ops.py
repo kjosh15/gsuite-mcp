@@ -125,3 +125,24 @@ async def get_file_metadata(service, file_id: str) -> dict[str, Any]:
         "parents": metadata.get("parents", []),
         "capabilities": metadata.get("capabilities", {}),
     }
+
+
+async def get_files_metadata(
+    service, file_ids: list[str]
+) -> dict[str, Any]:
+    """Batch get metadata for N file IDs concurrently."""
+    async def one(fid: str) -> dict[str, Any]:
+        return await get_file_metadata(service, fid)
+
+    gathered = await asyncio.gather(
+        *(one(fid) for fid in file_ids),
+        return_exceptions=True,
+    )
+    results = []
+    errors = []
+    for fid, outcome in zip(file_ids, gathered):
+        if isinstance(outcome, Exception):
+            errors.append({"file_id": fid, "error": str(outcome)})
+        else:
+            results.append(outcome)
+    return {"results": results, "errors": errors}
