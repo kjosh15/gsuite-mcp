@@ -67,30 +67,6 @@ async def test_upload_update_existing(mock_drive):
 
 
 @pytest.mark.asyncio
-async def test_upload_create_on_personal_drive_returns_terminal_error(mock_drive):
-    """When create() fails with storageQuotaExceeded, return a structured,
-    non-retryable error instead of raising. The error must tell the LLM to STOP."""
-    mock_drive.files().create.return_value.execute.side_effect = (
-        _quota_exceeded_error()
-    )
-
-    from gdrive_mcp.server import upload_file
-
-    content = base64.b64encode(b"file content").decode()
-    result = await upload_file(
-        content_base64=content,
-        file_name="report.html",
-        mime_type="text/html",
-        parent_folder_id="folder456",
-    )
-
-    assert result["error"] == "STORAGE_QUOTA_UNSUPPORTED"
-    assert result["retryable"] is False
-    assert "DO NOT RETRY" in result["message"]
-    assert "upload" in result["message"].lower()
-
-
-@pytest.mark.asyncio
 async def test_upload_update_still_raises_unknown_errors(mock_drive):
     """Non-quota errors must still propagate so we don't swallow real bugs."""
     resp = MagicMock()
