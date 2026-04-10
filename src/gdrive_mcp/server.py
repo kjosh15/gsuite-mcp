@@ -57,6 +57,16 @@ async def get_file_metadata(file_id: str) -> dict[str, Any]:
     return await drive_ops.get_file_metadata(auth.get_drive_service(), file_id)
 
 
+@mcp.tool()
+async def get_files_metadata(file_ids: list[str]) -> dict[str, Any]:
+    """Batch get metadata for multiple file IDs concurrently.
+
+    Returns {results: [...], errors: [{file_id, error}]}. Partial failures
+    do not abort the whole batch — failed IDs appear in errors.
+    """
+    return await drive_ops.get_files_metadata(auth.get_drive_service(), file_ids)
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
