@@ -9,7 +9,7 @@ def test_get_credentials_from_env(monkeypatch):
     monkeypatch.setenv("GOOGLE_OAUTH_REFRESH_TOKEN", "refresh789")
 
     with patch("gdrive_mcp.auth.Credentials") as mock_creds_cls, \
-         patch("gdrive_mcp.auth.Request") as mock_request:
+         patch("gdrive_mcp.auth.Request"):
         mock_creds = MagicMock()
         mock_creds_cls.return_value = mock_creds
 
