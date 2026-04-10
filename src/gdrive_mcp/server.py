@@ -215,6 +215,58 @@ async def replace_text(
     }
 
 
+@mcp.tool()
+async def manage_comments(
+    file_id: str,
+    action: str,
+    comment_id: Optional[str] = None,
+    content: Optional[str] = None,
+    anchor_text: Optional[str] = None,
+    include_resolved: bool = False,
+) -> dict[str, Any]:
+    """Manage comments on a Drive file. Actions: list, create, reply, resolve.
+
+    Parameter requirements per action:
+    - list: no extra params (include_resolved optional)
+    - create: content required (anchor_text optional)
+    - reply: comment_id and content required
+    - resolve: comment_id required
+    """
+    drive = auth.get_drive_service()
+
+    if action == "list":
+        return await drive_ops.list_comments(drive, file_id, include_resolved)
+
+    if action == "create":
+        if not content:
+            return {
+                "error": "MISSING_PARAM", "retryable": False,
+                "message": "action='create' requires 'content'",
+            }
+        return await drive_ops.create_comment(drive, file_id, content, anchor_text)
+
+    if action == "reply":
+        if not comment_id or not content:
+            return {
+                "error": "MISSING_PARAM", "retryable": False,
+                "message": "action='reply' requires 'comment_id' and 'content'",
+            }
+        return await drive_ops.reply_to_comment(drive, file_id, comment_id, content)
+
+    if action == "resolve":
+        if not comment_id:
+            return {
+                "error": "MISSING_PARAM", "retryable": False,
+                "message": "action='resolve' requires 'comment_id'",
+            }
+        return await drive_ops.resolve_comment(drive, file_id, comment_id)
+
+    return {
+        "error": "INVALID_ACTION", "retryable": False,
+        "message": f"Unknown action '{action}'. Valid: list, create, reply, resolve.",
+    }
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
