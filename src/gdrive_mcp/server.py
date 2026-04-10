@@ -118,8 +118,23 @@ async def append_to_file(
         )
         modified_time = meta2.get("modifiedTime", "")
     else:
-        # implemented in Task 11
-        raise NotImplementedError("Plain-file path added in Task 11")
+        # Plain file: download, concat, upload
+        current = await asyncio.to_thread(
+            lambda: drive.files().get_media(fileId=file_id).execute()
+        )
+        to_append = (separator + content).encode("utf-8")
+        new_bytes = current + to_append
+        import base64 as _b64
+        upload_result = await drive_ops.upload_file(
+            drive,
+            content_base64=_b64.b64encode(new_bytes).decode(),
+            file_name=name,
+            mime_type=mime,
+            file_id=file_id,
+        )
+        mode = "plain_roundtrip"
+        modified_time = upload_result.get("modified_time", "")
+        ops_result = {"bytes_appended": len(to_append)}
 
     return {
         "file_id": file_id,
