@@ -8,6 +8,7 @@ import os
 import sys
 from typing import Any, Optional
 
+from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
 
 from fastmcp import FastMCP
@@ -64,8 +65,22 @@ async def upload_file(
     file_id: Optional[str] = None,
     parent_folder_id: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Upload a file to Google Drive. If file_id is provided, updates the existing
-    file in place (preserving URL, sharing, version history). Otherwise creates new.
+    """Upload a file to Google Drive.
+
+    IMPORTANT — Two modes with very different constraints:
+
+    1. UPDATE an existing file (file_id provided): ALWAYS WORKS.
+       Use this for the .docx tracked-changes workflow: download_file →
+       edit locally → upload_file(file_id=...) to update in place,
+       preserving URL, sharing, and version history.
+
+    2. CREATE a new file (file_id omitted): FAILS on personal Google Drive
+       with a storageQuotaExceeded error. This is a permanent GCP limitation:
+       service accounts have zero Drive storage quota and cannot own files on
+       personal Drives. If you need to create a NEW file on a personal Drive,
+       STOP — do not retry with different parameters, it will always fail.
+       Tell the user to upload the file manually via the Drive web UI instead.
+       (Create-new only works inside a Google Workspace Shared Drive.)
 
     For .docx tracked changes: do NOT set convert — the .docx must stay as .docx.
     """
@@ -89,15 +104,36 @@ async def upload_file(
         body: dict[str, Any] = {"name": file_name}
         if parent_folder_id:
             body["parents"] = [parent_folder_id]
-        result = await asyncio.to_thread(
-            lambda: service.files()
-            .create(
-                body=body,
-                media_body=media,
-                fields="id,name,webViewLink,version,modifiedTime",
+        try:
+            result = await asyncio.to_thread(
+                lambda: service.files()
+                .create(
+                    body=body,
+                    media_body=media,
+                    fields="id,name,webViewLink,version,modifiedTime",
+                )
+                .execute()
             )
-            .execute()
-        )
+        except HttpError as e:
+            if "storageQuotaExceeded" in str(e):
+                return {
+                    "error": "STORAGE_QUOTA_UNSUPPORTED",
+                    "retryable": False,
+                    "message": (
+                        "Cannot create new files on personal Google Drive via "
+                        "this service account. This is a permanent GCP "
+                        "limitation (service accounts have no Drive storage "
+                        "quota), NOT a transient error. DO NOT RETRY with "
+                        "different parameters, different folders, or different "
+                        "MIME types — it will always fail. Workaround: ask the "
+                        "user to upload the file manually via the Google Drive "
+                        "web UI, OR call upload_file again with an existing "
+                        "file_id to UPDATE a file in place (updates always "
+                        "work). Creating new files only works inside a Google "
+                        "Workspace Shared Drive."
+                    ),
+                }
+            raise
 
     return {
         "file_id": result["id"],
