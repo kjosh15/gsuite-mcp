@@ -90,3 +90,61 @@ async def test_replace_text_zero_matches(mock_services):
     from gdrive_mcp.server import replace_text
     result = await replace_text(file_id="d1", find="nothing", replace="y")
     assert result["replacements_made"] == 0
+
+
+@pytest.mark.asyncio
+async def test_replace_text_regex_mode(mock_services):
+    drive = mock_services["drive"]
+    docs = mock_services["docs"]
+    drive.files().get.return_value.execute.return_value = {
+        "name": "doc", "mimeType": "application/vnd.google-apps.document",
+        "modifiedTime": "2026-04-10T12:00:00Z",
+    }
+    # documents.get returns body with textRuns containing plain text
+    docs.documents().get.return_value.execute.return_value = {
+        "body": {
+            "content": [
+                {
+                    "startIndex": 1, "endIndex": 20,
+                    "paragraph": {
+                        "elements": [
+                            {
+                                "startIndex": 1, "endIndex": 20,
+                                "textRun": {"content": "version v1.2 text\n"},
+                            }
+                        ]
+                    },
+                }
+            ]
+        }
+    }
+    docs.documents().batchUpdate.return_value.execute.return_value = {"replies": []}
+
+    from gdrive_mcp.server import replace_text
+    result = await replace_text(
+        file_id="d1", find=r"v\d+\.\d+", replace="vNEW", regex=True
+    )
+    assert result["regex_mode"] is True
+    assert result["replacements_made"] == 1
+
+    req = docs.documents().batchUpdate.call_args.kwargs["body"]["requests"]
+    # Should contain a delete + insert pair
+    kinds = [list(r.keys())[0] for r in req]
+    assert "deleteContentRange" in kinds
+    assert "insertText" in kinds
+
+
+@pytest.mark.asyncio
+async def test_replace_text_invalid_regex_returns_error(mock_services):
+    drive = mock_services["drive"]
+    drive.files().get.return_value.execute.return_value = {
+        "name": "doc", "mimeType": "application/vnd.google-apps.document",
+        "modifiedTime": "2026-04-10T12:00:00Z",
+    }
+
+    from gdrive_mcp.server import replace_text
+    result = await replace_text(
+        file_id="d1", find="[unclosed", replace="y", regex=True
+    )
+    assert result["error"] == "INVALID_REGEX"
+    assert result["retryable"] is False
