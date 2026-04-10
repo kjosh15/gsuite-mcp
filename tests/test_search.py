@@ -5,7 +5,7 @@ import pytest
 
 @pytest.fixture
 def mock_drive():
-    with patch("gdrive_mcp.server.get_drive_service") as mock:
+    with patch("gdrive_mcp.auth.get_drive_service") as mock:
         service = MagicMock()
         mock.return_value = service
         yield service
