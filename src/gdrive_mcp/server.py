@@ -22,7 +22,7 @@ async def download_file(
     For native Google formats (Docs, Sheets), use export_format to convert.
     """
     return await drive_ops.download_file(
-        get_drive_service(), file_id, export_format
+        auth.get_drive_service(), file_id, export_format
     )
 
 
@@ -36,7 +36,7 @@ async def upload_file(
 ) -> dict[str, Any]:
     """Upload a file to Google Drive (create or update)."""
     return await drive_ops.upload_file(
-        get_drive_service(),
+        auth.get_drive_service(),
         content_base64,
         file_name,
         mime_type,
@@ -48,13 +48,13 @@ async def upload_file(
 @mcp.tool()
 async def search_files(query: str, max_results: int = 10) -> dict[str, Any]:
     """Search Google Drive for files. Uses Drive API query syntax."""
-    return await drive_ops.search_files(get_drive_service(), query, max_results)
+    return await drive_ops.search_files(auth.get_drive_service(), query, max_results)
 
 
 @mcp.tool()
 async def get_file_metadata(file_id: str) -> dict[str, Any]:
     """Get metadata for a Google Drive file without downloading its content."""
-    return await drive_ops.get_file_metadata(get_drive_service(), file_id)
+    return await drive_ops.get_file_metadata(auth.get_drive_service(), file_id)
 
 
 def main() -> None:
