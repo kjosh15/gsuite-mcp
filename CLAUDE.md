@@ -27,8 +27,10 @@ uv run python -m gdrive_mcp.auth_setup
 - `src/gdrive_mcp/docs_ops.py` — Docs v1 operations (append, replace_text)
 - `src/gdrive_mcp/sheets_ops.py` — Sheets v4 operations (append rows)
 - `src/gdrive_mcp/docx_edits.py` — OOXML tracked-changes (pure functions)
-- `src/gdrive_mcp/server.py` — FastMCP server exposing 9 tools
-- `tests/` — pytest suite mirroring the module split
+- `src/gdrive_mcp/api_key_middleware.py` — Starlette bearer-token auth middleware
+- `src/gdrive_mcp/server.py` — FastMCP server exposing 9 tools (refuses to start without `GDRIVE_MCP_API_KEY`)
+- `tests/` — pytest suite mirroring the module split (42 tests)
+- `docs/DEPLOYMENT.md` — deployment runbook (Cloud Run topology, Secret Manager layout, key rotation, smoke tests, client config)
 
 ## Tools
 
