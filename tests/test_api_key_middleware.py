@@ -9,13 +9,15 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 
 
-def _make_request(headers: list[tuple[bytes, bytes]]) -> Request:
+def _make_request(
+    headers: list[tuple[bytes, bytes]], query_string: bytes = b""
+) -> Request:
     scope = {
         "type": "http",
         "method": "POST",
         "path": "/mcp",
         "headers": headers,
-        "query_string": b"",
+        "query_string": query_string,
     }
     return Request(scope)
 
