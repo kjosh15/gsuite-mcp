@@ -69,3 +69,38 @@ async def test_missing_bearer_scheme_returns_401():
     request = _make_request(headers=[(b"authorization", b"secret123")])
     response = await middleware.dispatch(request, _call_next_ok)
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_correct_query_param_key_passes_through():
+    from gdrive_mcp.api_key_middleware import APIKeyMiddleware
+
+    middleware = APIKeyMiddleware(app=None, api_key="secret123")
+    request = _make_request(headers=[], query_string=b"key=secret123")
+    response = await middleware.dispatch(request, _call_next_ok)
+    assert response.status_code == 200
+    assert response.body == b"ok"
+
+
+@pytest.mark.asyncio
+async def test_wrong_query_param_key_returns_401():
+    from gdrive_mcp.api_key_middleware import APIKeyMiddleware
+
+    middleware = APIKeyMiddleware(app=None, api_key="secret123")
+    request = _make_request(headers=[], query_string=b"key=wrongkey")
+    response = await middleware.dispatch(request, _call_next_ok)
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_bearer_header_takes_precedence_over_query_param():
+    from gdrive_mcp.api_key_middleware import APIKeyMiddleware
+
+    middleware = APIKeyMiddleware(app=None, api_key="secret123")
+    # Correct header + wrong query param → should pass (header wins)
+    request = _make_request(
+        headers=[(b"authorization", b"Bearer secret123")],
+        query_string=b"key=wrongkey",
+    )
+    response = await middleware.dispatch(request, _call_next_ok)
+    assert response.status_code == 200
