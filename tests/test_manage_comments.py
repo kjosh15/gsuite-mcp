@@ -66,10 +66,10 @@ async def test_manage_comments_reply(mock_drive):
 
 @pytest.mark.asyncio
 async def test_manage_comments_resolve(mock_drive):
-    mock_drive.comments().get.return_value.execute.return_value = {
-        "content": "orig",
+    mock_drive.replies().create.return_value.execute.return_value = {
+        "id": "r1", "action": "resolve",
     }
-    mock_drive.comments().update.return_value.execute.return_value = {
+    mock_drive.comments().get.return_value.execute.return_value = {
         "id": "c1", "content": "orig", "resolved": True,
     }
     from gdrive_mcp.server import manage_comments
@@ -77,13 +77,10 @@ async def test_manage_comments_resolve(mock_drive):
         file_id="f1", action="resolve", comment_id="c1"
     )
     assert result["resolved"] is True
-    # Verify the GET was called to fetch existing content
-    mock_drive.comments().get.assert_called()
-    # Verify update body includes content
-    mock_drive.comments().update.assert_called_once()
-    call_kwargs = mock_drive.comments().update.call_args
-    assert call_kwargs.kwargs["body"]["content"] == "orig"
-    assert call_kwargs.kwargs["body"]["resolved"] is True
+    # Verify resolve was done via replies API
+    mock_drive.replies().create.assert_called_once()
+    call_kwargs = mock_drive.replies().create.call_args
+    assert call_kwargs.kwargs["body"] == {"action": "resolve"}
 
 
 @pytest.mark.asyncio
