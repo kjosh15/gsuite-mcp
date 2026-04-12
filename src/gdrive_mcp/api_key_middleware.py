@@ -20,10 +20,12 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         self._api_key = api_key
 
     async def dispatch(self, request: Request, call_next) -> Response:
+        # Check Authorization header first, then fall back to ?key= query param
         auth_header = request.headers.get("authorization", "")
-        if not auth_header.startswith("Bearer "):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
-        provided = auth_header[len("Bearer ") :]
-        if not hmac.compare_digest(provided, self._api_key):
+        if auth_header.startswith("Bearer "):
+            provided = auth_header[len("Bearer ") :]
+        else:
+            provided = request.query_params.get("key", "")
+        if not provided or not hmac.compare_digest(provided, self._api_key):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         return await call_next(request)
