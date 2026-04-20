@@ -27,9 +27,10 @@ uv run python -m gsuite_mcp.auth_setup
 - `src/gsuite_mcp/docs_ops.py` — Docs v1 operations (append, replace_text)
 - `src/gsuite_mcp/sheets_ops.py` — Sheets v4 operations (append rows)
 - `src/gsuite_mcp/docx_edits.py` — OOXML tracked-changes (pure functions)
+- `src/gsuite_mcp/gmail_ops.py` — Gmail v1 operations (thread-aware draft creation)
 - `src/gsuite_mcp/api_key_middleware.py` — Starlette auth middleware (bearer token or `?key=` query param)
-- `src/gsuite_mcp/server.py` — FastMCP server exposing 9 tools (refuses to start without `GSUITE_MCP_API_KEY`)
-- `tests/` — pytest suite mirroring the module split (45 tests)
+- `src/gsuite_mcp/server.py` — FastMCP server exposing 10 tools (refuses to start without `GSUITE_MCP_API_KEY`)
+- `tests/` — pytest suite mirroring the module split (54 tests)
 - `docs/DEPLOYMENT.md` — deployment runbook (Cloud Run topology, Secret Manager layout, key rotation, smoke tests, client config)
 
 ## Tools
