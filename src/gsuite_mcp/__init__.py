@@ -1,1 +1,1 @@
-"""Minimal Google Drive MCP server."""
+"""Google Workspace MCP server."""
