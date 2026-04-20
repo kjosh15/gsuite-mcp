@@ -5,8 +5,8 @@ import pytest
 
 @pytest.fixture
 def mock_services():
-    with patch("gdrive_mcp.auth.get_drive_service") as mock_drive, \
-         patch("gdrive_mcp.auth.get_docs_service") as mock_docs:
+    with patch("gsuite_mcp.auth.get_drive_service") as mock_drive, \
+         patch("gsuite_mcp.auth.get_docs_service") as mock_docs:
         drive = MagicMock()
         docs = MagicMock()
         mock_drive.return_value = drive
@@ -26,7 +26,7 @@ async def test_replace_text_exact_match(mock_services):
         "replies": [{"replaceAllText": {"occurrencesChanged": 3}}]
     }
 
-    from gdrive_mcp.server import replace_text
+    from gsuite_mcp.server import replace_text
     result = await replace_text(
         file_id="d1", find="foo", replace="bar", match_case=True, regex=False
     )
@@ -51,7 +51,7 @@ async def test_replace_text_case_insensitive(mock_services):
         "replies": [{"replaceAllText": {"occurrencesChanged": 1}}]
     }
 
-    from gdrive_mcp.server import replace_text
+    from gsuite_mcp.server import replace_text
     await replace_text(file_id="d1", find="Foo", replace="bar", match_case=False)
 
     req = docs.documents().batchUpdate.call_args.kwargs["body"]["requests"][0]
@@ -67,7 +67,7 @@ async def test_replace_text_not_a_google_doc_returns_error(mock_services):
         "modifiedTime": "2026-04-10T12:00:00Z",
     }
 
-    from gdrive_mcp.server import replace_text
+    from gsuite_mcp.server import replace_text
     result = await replace_text(file_id="d1", find="x", replace="y")
 
     assert result["error"] == "NOT_A_GOOGLE_DOC"
@@ -87,7 +87,7 @@ async def test_replace_text_zero_matches(mock_services):
         "replies": [{"replaceAllText": {}}]  # no occurrencesChanged key
     }
 
-    from gdrive_mcp.server import replace_text
+    from gsuite_mcp.server import replace_text
     result = await replace_text(file_id="d1", find="nothing", replace="y")
     assert result["replacements_made"] == 0
 
@@ -120,7 +120,7 @@ async def test_replace_text_regex_mode(mock_services):
     }
     docs.documents().batchUpdate.return_value.execute.return_value = {"replies": []}
 
-    from gdrive_mcp.server import replace_text
+    from gsuite_mcp.server import replace_text
     result = await replace_text(
         file_id="d1", find=r"v\d+\.\d+", replace="vNEW", regex=True
     )
@@ -142,7 +142,7 @@ async def test_replace_text_invalid_regex_returns_error(mock_services):
         "modifiedTime": "2026-04-10T12:00:00Z",
     }
 
-    from gdrive_mcp.server import replace_text
+    from gsuite_mcp.server import replace_text
     result = await replace_text(
         file_id="d1", find="[unclosed", replace="y", regex=True
     )
