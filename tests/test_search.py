@@ -5,7 +5,7 @@ import pytest
 
 @pytest.fixture
 def mock_drive():
-    with patch("gdrive_mcp.auth.get_drive_service") as mock:
+    with patch("gsuite_mcp.auth.get_drive_service") as mock:
         service = MagicMock()
         mock.return_value = service
         yield service
@@ -26,7 +26,7 @@ async def test_search_files(mock_drive):
         ]
     }
 
-    from gdrive_mcp.server import search_files
+    from gsuite_mcp.server import search_files
 
     result = await search_files(query="name contains 'Stakeholder'")
 
