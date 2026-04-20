@@ -340,6 +340,46 @@ async def docx_suggest_edit(
     }
 
 
+@mcp.tool()
+async def create_reply_draft(
+    thread_id: str,
+    in_reply_to_message_id: str,
+    to: str,
+    body: str,
+    cc: Optional[str] = None,
+    bcc: Optional[str] = None,
+    subject: Optional[str] = None,
+    content_type: str = "plain",
+) -> dict[str, Any]:
+    """Create a Gmail draft replying to a message in a thread.
+
+    Fetches the original message headers to set In-Reply-To and References,
+    then creates a draft attached to the given thread. Draft-only — does not
+    send. The human reviews and sends from Gmail.
+
+    Args:
+        thread_id: Gmail thread ID.
+        in_reply_to_message_id: Gmail message ID being replied to.
+        to: Recipient email address.
+        body: Draft body (plain text or HTML).
+        cc: Optional CC recipients.
+        bcc: Optional BCC recipients.
+        subject: Override auto-generated 'Re: <original subject>'.
+        content_type: 'plain' (default) or 'html'.
+    """
+    return await gmail_ops.create_reply_draft(
+        gmail_service=auth.get_gmail_service(),
+        thread_id=thread_id,
+        in_reply_to_message_id=in_reply_to_message_id,
+        to=to,
+        body=body,
+        cc=cc,
+        bcc=bcc,
+        subject=subject,
+        content_type=content_type,
+    )
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
