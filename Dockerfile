@@ -9,4 +9,4 @@ RUN pip install --no-cache-dir .
 ENV PORT=8080
 EXPOSE 8080
 
-CMD ["python", "-m", "gdrive_mcp"]
+CMD ["python", "-m", "gsuite_mcp"]
