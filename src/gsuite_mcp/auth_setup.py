@@ -10,7 +10,7 @@ import sys
 
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-from gdrive_mcp.auth import SCOPES
+from gsuite_mcp.auth import SCOPES
 
 
 def main() -> int:
