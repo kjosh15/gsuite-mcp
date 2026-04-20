@@ -90,7 +90,7 @@ for SECRET in gdrive-oauth-client-id gdrive-oauth-client-secret gdrive-oauth-ref
 done
 
 # 6. Enable required APIs
-gcloud services enable drive.googleapis.com docs.googleapis.com sheets.googleapis.com \
+gcloud services enable drive.googleapis.com docs.googleapis.com sheets.googleapis.com gmail.googleapis.com \
   --project=gdrive-mcp-492818
 
 # 7. Deploy
