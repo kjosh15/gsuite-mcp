@@ -347,11 +347,14 @@ def main() -> None:
         stream=sys.stderr,
         force=True,
     )
-    api_key = os.environ.get("GDRIVE_MCP_API_KEY")
+    api_key = os.environ.get("GSUITE_MCP_API_KEY") or os.environ.get(
+        "GDRIVE_MCP_API_KEY"
+    )
     if not api_key:
         print(
-            "ERROR: GDRIVE_MCP_API_KEY environment variable is required. "
-            "Refusing to start an unauthenticated MCP server.",
+            "ERROR: GSUITE_MCP_API_KEY (or GDRIVE_MCP_API_KEY) environment "
+            "variable is required. Refusing to start an unauthenticated "
+            "MCP server.",
             file=sys.stderr,
         )
         sys.exit(1)
