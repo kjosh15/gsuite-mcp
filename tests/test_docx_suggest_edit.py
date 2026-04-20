@@ -7,7 +7,7 @@ from tests.fixtures.sample_docx import make_docx
 
 @pytest.fixture
 def mock_drive():
-    with patch("gdrive_mcp.auth.get_drive_service") as mock:
+    with patch("gsuite_mcp.auth.get_drive_service") as mock:
         service = MagicMock()
         mock.return_value = service
         yield service
@@ -30,7 +30,7 @@ async def test_docx_suggest_edit_roundtrips(mock_drive):
         "modifiedTime": "2026-04-10T12:00:00Z",
     }
 
-    from gdrive_mcp.server import docx_suggest_edit
+    from gsuite_mcp.server import docx_suggest_edit
     result = await docx_suggest_edit(
         file_id="d1", find_text="quick", replace_text="slow", author="Claude"
     )
@@ -45,7 +45,7 @@ async def test_docx_suggest_edit_errors_on_google_doc(mock_drive):
         "name": "native",
         "mimeType": "application/vnd.google-apps.document",
     }
-    from gdrive_mcp.server import docx_suggest_edit
+    from gsuite_mcp.server import docx_suggest_edit
     result = await docx_suggest_edit(
         file_id="x", find_text="a", replace_text="b"
     )
@@ -63,7 +63,7 @@ async def test_docx_suggest_edit_find_text_not_found(mock_drive):
     }
     mock_drive.files().get_media.return_value.execute.return_value = original
 
-    from gdrive_mcp.server import docx_suggest_edit
+    from gsuite_mcp.server import docx_suggest_edit
     result = await docx_suggest_edit(
         file_id="d1", find_text="xyz", replace_text="abc"
     )
