@@ -39,7 +39,7 @@ written and rely on Secret Manager for the real values.
 
 Two layers, both required on every request:
 
-1. **Caller → server:** shared-secret API key, accepted via either `Authorization: Bearer <api-key>` header or `?key=<api-key>` query parameter. Enforced by `APIKeyMiddleware` (`src/gdrive_mcp/api_key_middleware.py`). Constant-time comparison via `hmac.compare_digest`. The header is checked first; the query param is a fallback for clients (like Claude.ai) that can't set custom headers. Missing/wrong key → `401 {"error": "unauthorized"}`.
+1. **Caller → server:** shared-secret API key, accepted via either `Authorization: Bearer <api-key>` header or `?key=<api-key>` query parameter. Enforced by `APIKeyMiddleware` (`src/gsuite_mcp/api_key_middleware.py`). Constant-time comparison via `hmac.compare_digest`. The header is checked first; the query param is a fallback for clients (like Claude.ai) that can't set custom headers. Missing/wrong key → `401 {"error": "unauthorized"}`.
 2. **Server → Google APIs:** OAuth user credentials (client id + client secret + long-lived refresh token). On every Drive call the server exchanges the refresh token for a short-lived access token via the standard OAuth refresh flow.
 
 The server **refuses to start** if `GDRIVE_MCP_API_KEY` is unset (see `server.py:main`). There is no mode that runs unauthenticated.
