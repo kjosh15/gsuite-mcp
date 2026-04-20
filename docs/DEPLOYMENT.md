@@ -142,7 +142,7 @@ Refresh tokens for **Internal** Workspace OAuth clients don't expire on a fixed 
 # 1. Reuse the existing client id + secret (or create a new client)
 GOOGLE_OAUTH_CLIENT_ID='<from-secret-or-~/.config/gdrive-mcp/oauth-client.json>' \
 GOOGLE_OAUTH_CLIENT_SECRET='<from-secret-or-~/.config/gdrive-mcp/oauth-client.json>' \
-  uv run python -m gdrive_mcp.auth_setup
+  uv run python -m gsuite_mcp.auth_setup
 
 # 2. Add a new version to the secret with the printed token
 printf '%s' '<new-refresh-token>' | gcloud secrets versions add gdrive-oauth-refresh-token \
