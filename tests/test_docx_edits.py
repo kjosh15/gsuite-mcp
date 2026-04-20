@@ -12,7 +12,7 @@ def _extract_document_xml(docx_bytes: bytes) -> str:
 
 
 def test_insert_tracked_change_single_run_match():
-    from gdrive_mcp.docx_edits import insert_tracked_change
+    from gsuite_mcp.docx_edits import insert_tracked_change
 
     original = make_docx([("The quick brown fox", None)])
     modified = insert_tracked_change(
@@ -29,7 +29,7 @@ def test_insert_tracked_change_single_run_match():
 
 
 def test_insert_tracked_change_preserves_surrounding_text():
-    from gdrive_mcp.docx_edits import insert_tracked_change
+    from gsuite_mcp.docx_edits import insert_tracked_change
 
     original = make_docx([("Hello beautiful world", None)])
     modified = insert_tracked_change(
@@ -42,7 +42,7 @@ def test_insert_tracked_change_preserves_surrounding_text():
 
 
 def test_insert_tracked_change_not_found_raises():
-    from gdrive_mcp.docx_edits import insert_tracked_change, NotFoundError
+    from gsuite_mcp.docx_edits import insert_tracked_change, NotFoundError
 
     original = make_docx([("Hello world", None)])
     with pytest.raises(NotFoundError):
@@ -50,7 +50,7 @@ def test_insert_tracked_change_not_found_raises():
 
 
 def test_insert_tracked_change_spans_two_runs():
-    from gdrive_mcp.docx_edits import insert_tracked_change
+    from gsuite_mcp.docx_edits import insert_tracked_change
 
     # Three runs: "The ", "bold" (bold), " word"
     original = make_docx([
@@ -70,7 +70,7 @@ def test_insert_tracked_change_spans_two_runs():
 
 
 def test_insert_tracked_change_spans_three_runs():
-    from gdrive_mcp.docx_edits import insert_tracked_change
+    from gsuite_mcp.docx_edits import insert_tracked_change
 
     original = make_docx([
         ("The ", None),
@@ -87,7 +87,7 @@ def test_insert_tracked_change_spans_three_runs():
 
 
 def test_insert_tracked_change_match_at_run_boundary():
-    from gdrive_mcp.docx_edits import insert_tracked_change
+    from gsuite_mcp.docx_edits import insert_tracked_change
 
     original = make_docx([
         ("Hello", None),
