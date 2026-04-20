@@ -1,4 +1,4 @@
-"""Google Drive MCP server — thin wrappers over *_ops modules."""
+"""Google Workspace MCP server — thin wrappers over *_ops modules."""
 
 import asyncio
 import logging
