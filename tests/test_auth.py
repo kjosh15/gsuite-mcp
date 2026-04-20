@@ -8,12 +8,12 @@ def test_get_credentials_from_env(monkeypatch):
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_SECRET", "secret456")
     monkeypatch.setenv("GOOGLE_OAUTH_REFRESH_TOKEN", "refresh789")
 
-    with patch("gdrive_mcp.auth.Credentials") as mock_creds_cls, \
-         patch("gdrive_mcp.auth.Request"):
+    with patch("gsuite_mcp.auth.Credentials") as mock_creds_cls, \
+         patch("gsuite_mcp.auth.Request"):
         mock_creds = MagicMock()
         mock_creds_cls.return_value = mock_creds
 
-        from gdrive_mcp.auth import get_credentials, _reset_cache
+        from gsuite_mcp.auth import get_credentials, _reset_cache
         _reset_cache()
         creds = get_credentials()
 
@@ -38,11 +38,11 @@ def test_get_credentials_caches(monkeypatch):
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_SECRET", "secret456")
     monkeypatch.setenv("GOOGLE_OAUTH_REFRESH_TOKEN", "refresh789")
 
-    with patch("gdrive_mcp.auth.Credentials") as mock_creds_cls, \
-         patch("gdrive_mcp.auth.Request"):
+    with patch("gsuite_mcp.auth.Credentials") as mock_creds_cls, \
+         patch("gsuite_mcp.auth.Request"):
         mock_creds_cls.return_value = MagicMock()
 
-        from gdrive_mcp.auth import get_credentials, _reset_cache
+        from gsuite_mcp.auth import get_credentials, _reset_cache
         _reset_cache()
         get_credentials()
         get_credentials()
@@ -55,7 +55,7 @@ def test_get_credentials_missing_env_raises(monkeypatch):
     monkeypatch.delenv("GOOGLE_OAUTH_CLIENT_SECRET", raising=False)
     monkeypatch.delenv("GOOGLE_OAUTH_REFRESH_TOKEN", raising=False)
 
-    from gdrive_mcp.auth import get_credentials, _reset_cache, AuthError
+    from gsuite_mcp.auth import get_credentials, _reset_cache, AuthError
     _reset_cache()
     with pytest.raises(AuthError, match="GOOGLE_OAUTH_"):
         get_credentials()
@@ -66,10 +66,10 @@ def test_service_factories_use_credentials(monkeypatch):
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_SECRET", "s")
     monkeypatch.setenv("GOOGLE_OAUTH_REFRESH_TOKEN", "r")
 
-    with patch("gdrive_mcp.auth.Credentials"), \
-         patch("gdrive_mcp.auth.Request"), \
-         patch("gdrive_mcp.auth.build") as mock_build:
-        from gdrive_mcp.auth import (
+    with patch("gsuite_mcp.auth.Credentials"), \
+         patch("gsuite_mcp.auth.Request"), \
+         patch("gsuite_mcp.auth.build") as mock_build:
+        from gsuite_mcp.auth import (
             get_drive_service, get_docs_service, get_sheets_service, _reset_cache,
         )
         _reset_cache()
