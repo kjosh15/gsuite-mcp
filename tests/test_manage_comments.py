@@ -5,7 +5,7 @@ import pytest
 
 @pytest.fixture
 def mock_drive():
-    with patch("gdrive_mcp.auth.get_drive_service") as mock:
+    with patch("gsuite_mcp.auth.get_drive_service") as mock:
         service = MagicMock()
         mock.return_value = service
         yield service
@@ -29,7 +29,7 @@ async def test_manage_comments_list(mock_drive):
         ]
     }
 
-    from gdrive_mcp.server import manage_comments
+    from gsuite_mcp.server import manage_comments
     result = await manage_comments(file_id="f1", action="list")
 
     assert len(result["comments"]) == 1
@@ -44,7 +44,7 @@ async def test_manage_comments_create_unanchored(mock_drive):
         "createdTime": "2026-04-10T12:00:00Z",
         "author": {"displayName": "Claude"},
     }
-    from gdrive_mcp.server import manage_comments
+    from gsuite_mcp.server import manage_comments
     result = await manage_comments(file_id="f1", action="create", content="hi")
     assert result["comment_id"] == "new1"
     mock_drive.comments().create.assert_called()
@@ -57,7 +57,7 @@ async def test_manage_comments_reply(mock_drive):
         "createdTime": "2026-04-10T12:00:00Z",
         "author": {"displayName": "Claude"},
     }
-    from gdrive_mcp.server import manage_comments
+    from gsuite_mcp.server import manage_comments
     result = await manage_comments(
         file_id="f1", action="reply", comment_id="c1", content="ack"
     )
@@ -72,7 +72,7 @@ async def test_manage_comments_resolve(mock_drive):
     mock_drive.comments().get.return_value.execute.return_value = {
         "id": "c1", "content": "orig", "resolved": True,
     }
-    from gdrive_mcp.server import manage_comments
+    from gsuite_mcp.server import manage_comments
     result = await manage_comments(
         file_id="f1", action="resolve", comment_id="c1"
     )
@@ -85,7 +85,7 @@ async def test_manage_comments_resolve(mock_drive):
 
 @pytest.mark.asyncio
 async def test_manage_comments_missing_required_param(mock_drive):
-    from gdrive_mcp.server import manage_comments
+    from gsuite_mcp.server import manage_comments
     # reply without comment_id
     result = await manage_comments(file_id="f1", action="reply", content="hi")
     assert result["error"] == "MISSING_PARAM"
@@ -96,6 +96,6 @@ async def test_manage_comments_missing_required_param(mock_drive):
 
 @pytest.mark.asyncio
 async def test_manage_comments_invalid_action(mock_drive):
-    from gdrive_mcp.server import manage_comments
+    from gsuite_mcp.server import manage_comments
     result = await manage_comments(file_id="f1", action="nonsense")
     assert result["error"] == "INVALID_ACTION"
