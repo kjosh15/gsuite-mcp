@@ -63,6 +63,7 @@ Optional:
 - Single-user OAuth only (service accounts removed)
 - Streamable HTTP transport for Cloud Run
 - `docx_suggest_edit` requires matches to fit within one paragraph (v1)
+- Gmail scopes: `gmail.compose` + `gmail.readonly` (narrowest for drafts). Users must re-run `auth_setup` after upgrade to grant Gmail scopes.
 
 ## Session Tracking
 Total Claude sessions: 4
