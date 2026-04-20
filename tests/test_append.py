@@ -6,9 +6,9 @@ import pytest
 @pytest.fixture
 def mock_services():
     """Mock drive, docs, and sheets services."""
-    with patch("gdrive_mcp.auth.get_drive_service") as mock_drive, \
-         patch("gdrive_mcp.auth.get_docs_service") as mock_docs, \
-         patch("gdrive_mcp.auth.get_sheets_service") as mock_sheets:
+    with patch("gsuite_mcp.auth.get_drive_service") as mock_drive, \
+         patch("gsuite_mcp.auth.get_docs_service") as mock_docs, \
+         patch("gsuite_mcp.auth.get_sheets_service") as mock_sheets:
         drive = MagicMock()
         docs = MagicMock()
         sheets = MagicMock()
@@ -41,7 +41,7 @@ async def test_append_to_google_doc_uses_docs_api(mock_services):
     }
     docs.documents().batchUpdate.return_value.execute.return_value = {}
 
-    from gdrive_mcp.server import append_to_file
+    from gsuite_mcp.server import append_to_file
     result = await append_to_file(
         file_id="doc123", content="new line", separator="\n"
     )
@@ -77,7 +77,7 @@ async def test_append_to_google_sheet_uses_sheets_api(mock_services):
         "updates": {"updatedRange": "Sheet1!A42:C42"}
     }
 
-    from gdrive_mcp.server import append_to_file
+    from gsuite_mcp.server import append_to_file
     result = await append_to_file(
         file_id="sheet123",
         content="col1,col2,col3\nrow2c1,row2c2,row2c3",
@@ -117,7 +117,7 @@ async def test_append_to_plain_file_roundtrips(mock_services):
         "modifiedTime": "2026-04-10T12:05:00Z",
     }
 
-    from gdrive_mcp.server import append_to_file
+    from gsuite_mcp.server import append_to_file
     result = await append_to_file(
         file_id="plain1", content="new line", separator="\n"
     )
