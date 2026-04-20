@@ -1,4 +1,4 @@
-from gdrive_mcp.server import main
+from gsuite_mcp.server import main
 
 if __name__ == "__main__":
     main()
