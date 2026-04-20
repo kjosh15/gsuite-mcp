@@ -1,7 +1,7 @@
 [project]
-name = "gdrive-mcp"
+name = "gsuite-mcp"
 version = "0.1.0"
-description = "Google Drive, Docs, and Sheets MCP server with append, replace, tracked-changes, and comment support"
+description = "Google Drive, Docs, Sheets, and Gmail MCP server with append, replace, tracked-changes, comments, and draft support"
 requires-python = ">=3.12"
 dependencies = [
     "fastmcp>=2.0.0",
