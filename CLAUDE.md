@@ -13,22 +13,22 @@ uv run pytest -q
 uv run ruff check .
 
 # Run locally
-uv run python -m gdrive_mcp
+uv run python -m gsuite_mcp
 
 # One-time OAuth setup (generates GOOGLE_OAUTH_REFRESH_TOKEN)
-uv run python -m gdrive_mcp.auth_setup
+uv run python -m gsuite_mcp.auth_setup
 ```
 
 ## Project Structure
 
-- `src/gdrive_mcp/auth.py` — OAuth user credential loader + service factories
-- `src/gdrive_mcp/auth_setup.py` — one-time OAuth consent CLI
-- `src/gdrive_mcp/drive_ops.py` — Drive v3 operations (download, upload, search, metadata, comments)
-- `src/gdrive_mcp/docs_ops.py` — Docs v1 operations (append, replace_text)
-- `src/gdrive_mcp/sheets_ops.py` — Sheets v4 operations (append rows)
-- `src/gdrive_mcp/docx_edits.py` — OOXML tracked-changes (pure functions)
-- `src/gdrive_mcp/api_key_middleware.py` — Starlette auth middleware (bearer token or `?key=` query param)
-- `src/gdrive_mcp/server.py` — FastMCP server exposing 9 tools (refuses to start without `GDRIVE_MCP_API_KEY`)
+- `src/gsuite_mcp/auth.py` — OAuth user credential loader + service factories
+- `src/gsuite_mcp/auth_setup.py` — one-time OAuth consent CLI
+- `src/gsuite_mcp/drive_ops.py` — Drive v3 operations (download, upload, search, metadata, comments)
+- `src/gsuite_mcp/docs_ops.py` — Docs v1 operations (append, replace_text)
+- `src/gsuite_mcp/sheets_ops.py` — Sheets v4 operations (append rows)
+- `src/gsuite_mcp/docx_edits.py` — OOXML tracked-changes (pure functions)
+- `src/gsuite_mcp/api_key_middleware.py` — Starlette auth middleware (bearer token or `?key=` query param)
+- `src/gsuite_mcp/server.py` — FastMCP server exposing 9 tools (refuses to start without `GSUITE_MCP_API_KEY`)
 - `tests/` — pytest suite mirroring the module split (45 tests)
 - `docs/DEPLOYMENT.md` — deployment runbook (Cloud Run topology, Secret Manager layout, key rotation, smoke tests, client config)
 
@@ -52,6 +52,7 @@ Required:
 - `GOOGLE_OAUTH_REFRESH_TOKEN` — long-lived refresh token (generate via `auth_setup`)
 
 Optional:
+- `GSUITE_MCP_API_KEY` — shared secret for the bearer-token middleware (also accepts `GDRIVE_MCP_API_KEY` for backward compatibility)
 - `PORT` — HTTP port for the FastMCP server (default 8080)
 
 ## Key Constraints
@@ -62,5 +63,5 @@ Optional:
 - `docx_suggest_edit` requires matches to fit within one paragraph (v1)
 
 ## Session Tracking
-Total Claude sessions: 3
-Last session: 2026-04-20 19:03:03
+Total Claude sessions: 4
+Last session: 2026-04-20
