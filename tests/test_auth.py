@@ -72,14 +72,17 @@ def test_service_factories_use_credentials(monkeypatch):
          patch("gsuite_mcp.auth.Request"), \
          patch("gsuite_mcp.auth.build") as mock_build:
         from gsuite_mcp.auth import (
-            get_drive_service, get_docs_service, get_sheets_service, _reset_cache,
+            get_drive_service, get_docs_service, get_sheets_service,
+            get_gmail_service, _reset_cache,
         )
         _reset_cache()
 
         get_drive_service()
         get_docs_service()
         get_sheets_service()
+        get_gmail_service()
 
         assert mock_build.call_args_list[0][0] == ("drive", "v3")
         assert mock_build.call_args_list[1][0] == ("docs", "v1")
         assert mock_build.call_args_list[2][0] == ("sheets", "v4")
+        assert mock_build.call_args_list[3][0] == ("gmail", "v1")
