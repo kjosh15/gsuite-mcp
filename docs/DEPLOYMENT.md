@@ -260,7 +260,7 @@ The pre-OAuth-expansion revision (`gdrive-mcp-00004-2sw`) and the pre-API-key re
 
 ```bash
 uv sync --all-extras
-uv run pytest -q              # 45+ tests
+uv run pytest -q              # 54 tests
 uv run ruff check .
 
 # Run the server locally (requires all 4 env vars)
