@@ -191,12 +191,12 @@ Any MCP client that supports streamable HTTP with custom headers will work. The 
 
 ### Claude Desktop
 
-Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add (or update) the `gdrive-mcp` entry:
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add (or update) the `gsuite-mcp` entry:
 
 ```json
 {
   "mcpServers": {
-    "gdrive-mcp": {
+    "gsuite-mcp": {
       "command": "npx",
       "args": [
         "-y",
