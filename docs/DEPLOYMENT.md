@@ -22,7 +22,7 @@ written and rely on Secret Manager for the real values.
                                                          ▼
                                             ┌─────────────────────────┐
                                             │ Google Drive / Docs /   │
-                                            │ Sheets APIs as          │
+                                            │ Sheets / Gmail APIs as  │
                                             │ josh@josh.is            │
                                             └─────────────────────────┘
 ```
