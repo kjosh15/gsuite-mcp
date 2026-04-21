@@ -104,7 +104,7 @@ gcloud run deploy gdrive-mcp \
 ## Redeploying after a code change
 
 ```bash
-cd /Users/josh/Desktop/CODING/gdrive-mcp
+cd /Users/josh/Desktop/CODING/gsuite-mcp
 gcloud run deploy gdrive-mcp \
   --source=. \
   --region=us-central1 \
