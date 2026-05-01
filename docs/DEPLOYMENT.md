@@ -103,16 +103,25 @@ gcloud run deploy gdrive-mcp \
 
 ## Redeploying after a code change
 
+Use the two-step build+deploy flow. The single-command `gcloud run deploy --source=.` hits a known gcloud CLI bug (`ZIP does not support timestamps before 1980`) and should be avoided.
+
 ```bash
 cd /Users/josh/Desktop/CODING/gsuite-mcp
+
+# 1. Build and push the image via Cloud Build
+gcloud builds submit \
+  --tag us-central1-docker.pkg.dev/gdrive-mcp-492818/cloud-run-source-deploy/gdrive-mcp:latest \
+  --project=gdrive-mcp-492818 --quiet
+
+# 2. Deploy the pre-built image to Cloud Run
 gcloud run deploy gdrive-mcp \
-  --source=. \
+  --image=us-central1-docker.pkg.dev/gdrive-mcp-492818/cloud-run-source-deploy/gdrive-mcp:latest \
   --region=us-central1 \
   --project=gdrive-mcp-492818 \
   --quiet
 ```
 
-The `--update-secrets` flags from the initial deploy persist on the service, so you don't need to repeat them. Cloud Build picks up `Dockerfile`, builds the image, and rolls a new revision with `:latest` of every secret.
+The `--update-secrets` flags from the initial deploy persist on the service, so you don't need to repeat them.
 
 ## Rotating the API key
 
