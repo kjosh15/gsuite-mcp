@@ -1,6 +1,7 @@
 from unittest.mock import patch, MagicMock
 
 import pytest
+from googleapiclient.errors import HttpError
 
 
 @pytest.fixture
