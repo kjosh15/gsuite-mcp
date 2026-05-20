@@ -109,19 +109,21 @@ async def search_files(service, query: str, max_results: int = 10) -> dict[str, 
         )
         .execute()
     )
-    return {
-        "files": [
-            {
-                "file_id": f["id"],
-                "name": f["name"],
-                "mime_type": f.get("mimeType", ""),
-                "modified_time": f.get("modifiedTime", ""),
-                "web_view_link": f.get("webViewLink", ""),
-                "parents": f.get("parents", []),
-            }
-            for f in response.get("files", [])
-        ]
-    }
+    files = []
+    for f in response.get("files", []):
+        entry = {
+            "file_id": f["id"],
+            "name": f["name"],
+            "mime_type": f.get("mimeType", ""),
+            "modified_time": f.get("modifiedTime", ""),
+            "web_view_link": f.get("webViewLink", ""),
+            "parents": f.get("parents", []),
+            "trashed": f.get("trashed", False),
+        }
+        if f.get("trashedTime"):
+            entry["trashed_time"] = f["trashedTime"]
+        files.append(entry)
+    return {"files": files}
 
 
 async def get_file_metadata(service, file_id: str) -> dict[str, Any]:
