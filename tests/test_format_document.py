@@ -637,3 +637,119 @@ async def test_multi_match_error_does_not_block_other_ops():
     assert result["operations_applied"] == 1
     # batchUpdate is called for the successful operation
     svc.documents().batchUpdate.assert_called_once()
+
+
+# -------------------------------------------------------------------
+# format_document — match_mode (regex, substring alias, precedence)
+# -------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_format_regex_match_mode_delete():
+    """match_mode='regex' matches paragraph text by regex."""
+    doc = _make_doc(
+        (0, 10, "Hello World\n", "NORMAL_TEXT"),
+        (10, 25, "-  -\n", "NORMAL_TEXT"),
+        (25, 40, "Goodbye World\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "delete", "find_text": r"^-\s+-$", "match_mode": "regex"},
+    ])
+    assert result["results"][0]["status"] == "applied"
+    assert result["results"][0]["characters_deleted"] > 0
+
+
+@pytest.mark.asyncio
+async def test_format_regex_match_mode_set_style():
+    """match_mode='regex' works with set_style action."""
+    doc = _make_doc(
+        (0, 20, "1. Introduction\n", "NORMAL_TEXT"),
+        (20, 40, "Some body text here\n", "NORMAL_TEXT"),
+        (40, 60, "2. Methodology\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "set_style", "find_text": r"^\d+\.\s+", "match_mode": "regex",
+         "style": "HEADING_1", "match_all": True},
+    ])
+    assert result["results"][0]["status"] == "applied"
+    calls = svc.documents().batchUpdate.call_args
+    requests = calls.kwargs["body"]["requests"]
+    style_reqs = [r for r in requests if "updateParagraphStyle" in r]
+    assert len(style_reqs) == 2
+
+
+@pytest.mark.asyncio
+async def test_format_regex_invalid_pattern():
+    """Invalid regex pattern returns INVALID_REGEX error."""
+    doc = _make_doc(
+        (0, 10, "Hello\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "delete", "find_text": "[invalid", "match_mode": "regex"},
+    ])
+    assert result["error"] == "INVALID_REGEX"
+    assert result["retryable"] is False
+
+
+@pytest.mark.asyncio
+async def test_format_regex_case_sensitive():
+    """Regex match is case-sensitive by default (no casefold)."""
+    doc = _make_doc(
+        (0, 10, "Hello\n", "NORMAL_TEXT"),
+        (10, 20, "hello\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "delete", "find_text": "^Hello$", "match_mode": "regex"},
+    ])
+    assert result["results"][0]["status"] == "applied"
+    calls = svc.documents().batchUpdate.call_args
+    requests = calls.kwargs["body"]["requests"]
+    assert len(requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_format_match_mode_substring_alias():
+    """match_mode='substring' works as alias for substring=True."""
+    doc = _make_doc(
+        (0, 20, "Hello World Test\n", "NORMAL_TEXT"),
+        (20, 30, "Goodbye\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "delete", "find_text": "World", "match_mode": "substring"},
+    ])
+    assert result["results"][0]["status"] == "applied"
+
+
+@pytest.mark.asyncio
+async def test_format_match_mode_overrides_substring_flag():
+    """match_mode takes precedence over substring flag."""
+    doc = _make_doc(
+        (0, 10, "Hello\n", "NORMAL_TEXT"),
+        (10, 20, "hello\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "delete", "find_text": "Hello", "match_mode": "exact", "substring": True},
+    ])
+    assert result["results"][0]["status"] == "applied"
+    calls = svc.documents().batchUpdate.call_args
+    requests = calls.kwargs["body"]["requests"]
+    assert len(requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_format_invalid_match_mode():
+    """Invalid match_mode returns INVALID_MATCH_MODE error."""
+    doc = _make_doc(
+        (0, 10, "Hello\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "delete", "find_text": "Hello", "match_mode": "fuzzy"},
+    ])
+    assert result["error"] == "INVALID_MATCH_MODE"
+    assert result["retryable"] is False
