@@ -131,7 +131,7 @@ async def get_file_metadata(service, file_id: str) -> dict[str, Any]:
         lambda: service.files()
         .get(
             fileId=file_id,
-            fields="id,name,mimeType,size,modifiedTime,webViewLink,parents,capabilities",
+            fields="id,name,mimeType,size,modifiedTime,webViewLink,parents,capabilities,trashed,trashedTime",
         )
         .execute()
     )
