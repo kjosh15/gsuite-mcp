@@ -291,3 +291,40 @@ async def resolve_comment(
         "content": resp.get("content", ""),
         "resolved": resp.get("resolved", False),
     }
+
+
+async def trash_file(service, file_id: str) -> dict[str, Any]:
+    """Move a file to the trash."""
+    resp = await asyncio.to_thread(
+        lambda: service.files()
+        .update(
+            fileId=file_id,
+            body={"trashed": True},
+            fields="id,trashed,trashedTime",
+        )
+        .execute()
+    )
+    result: dict[str, Any] = {
+        "file_id": resp["id"],
+        "trashed": resp.get("trashed", True),
+    }
+    if resp.get("trashedTime"):
+        result["trashed_time"] = resp["trashedTime"]
+    return result
+
+
+async def untrash_file(service, file_id: str) -> dict[str, Any]:
+    """Restore a file from the trash."""
+    resp = await asyncio.to_thread(
+        lambda: service.files()
+        .update(
+            fileId=file_id,
+            body={"trashed": False},
+            fields="id,trashed",
+        )
+        .execute()
+    )
+    return {
+        "file_id": resp["id"],
+        "trashed": resp.get("trashed", False),
+    }
