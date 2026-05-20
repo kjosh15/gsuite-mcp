@@ -135,7 +135,7 @@ async def get_file_metadata(service, file_id: str) -> dict[str, Any]:
         )
         .execute()
     )
-    return {
+    result = {
         "file_id": metadata["id"],
         "name": metadata["name"],
         "mime_type": metadata.get("mimeType", ""),
@@ -144,7 +144,11 @@ async def get_file_metadata(service, file_id: str) -> dict[str, Any]:
         "web_view_link": metadata.get("webViewLink", ""),
         "parents": metadata.get("parents", []),
         "capabilities": metadata.get("capabilities", {}),
+        "trashed": metadata.get("trashed", False),
     }
+    if metadata.get("trashedTime"):
+        result["trashed_time"] = metadata["trashedTime"]
+    return result
 
 
 async def get_files_metadata(
