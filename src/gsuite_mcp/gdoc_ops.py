@@ -47,11 +47,19 @@ async def template_populate(
     new_file_id = copied["id"]
 
     if not replacements:
-        return {
+        result = {
             "file_id": new_file_id,
             "web_view_link": copied.get("webViewLink", ""),
             "replacements_made": {},
         }
+        if post_styles:
+            from gsuite_mcp import docs_ops
+
+            style_result = await docs_ops.format_document(
+                docs_service, new_file_id, post_styles
+            )
+            result["post_styles_result"] = style_result
+        return result
 
     requests = [
         {
