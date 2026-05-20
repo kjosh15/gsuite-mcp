@@ -457,7 +457,7 @@ async def test_replace_section_include_heading_applies_heading_style():
 
 @pytest.mark.asyncio
 async def test_replace_section_empty_section_body():
-    """Heading immediately followed by same-level heading -> EMPTY_SECTION."""
+    """Heading immediately followed by same-level heading -> insert after heading."""
     doc = _make_doc(
         (0, 10, "Chapter 1\n", "HEADING_1"),
         (10, 20, "Chapter 2\n", "HEADING_1"),
@@ -465,9 +465,50 @@ async def test_replace_section_empty_section_body():
     svc = _mock_docs_service(doc)
     result = await replace_section(svc, "file123", "Chapter 1", "New text.\n")
 
-    assert result["error"] == "EMPTY_SECTION"
-    assert result["retryable"] is False
-    assert "message" in result
+    assert "error" not in result
+    assert result["characters_deleted"] == 0
+    assert result["characters_inserted"] == len("New text.\n")
+
+
+@pytest.mark.asyncio
+async def test_replace_section_empty_section_inserts_after_heading():
+    """Empty section body with include_heading=False inserts after heading."""
+    doc = _make_doc(
+        (0, 10, "Chapter 1\n", "HEADING_1"),
+        (10, 20, "Chapter 2\n", "HEADING_1"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await replace_section(svc, "file123", "Chapter 1", "New body text.\n")
+
+    assert "error" not in result
+    assert result["characters_deleted"] == 0
+    assert result["characters_inserted"] == len("New body text.\n")
+
+    # Verify batchUpdate was called (insert + style, no delete)
+    call_args = svc.documents().batchUpdate.call_args
+    requests = call_args.kwargs["body"]["requests"]
+    actions = [list(r.keys())[0] for r in requests]
+    assert "deleteContentRange" not in actions
+    assert "insertText" in actions
+    assert "updateParagraphStyle" in actions
+    insert_req = [r for r in requests if "insertText" in r][0]
+    assert insert_req["insertText"]["location"]["index"] == 10
+
+
+@pytest.mark.asyncio
+async def test_replace_section_empty_last_section_inserts():
+    """Last section with no body content inserts after heading."""
+    doc = _make_doc(
+        (0, 10, "Chapter 1\n", "HEADING_1"),
+        (10, 30, "Some body.\n", "NORMAL_TEXT"),
+        (30, 40, "Chapter 2\n", "HEADING_1"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await replace_section(svc, "file123", "Chapter 2", "Final content.\n")
+
+    assert "error" not in result
+    assert result["characters_deleted"] == 0
+    assert result["characters_inserted"] == len("Final content.\n")
 
 
 @pytest.mark.asyncio
