@@ -165,6 +165,11 @@ async def replace_text(
 
     Only works on Google Docs (mimeType application/vnd.google-apps.document).
     For real .docx files, use docx_suggest_edit instead.
+
+    Note: Operates on paragraph-level text. Patterns spanning paragraph breaks
+    will not match — Google Docs treats paragraph breaks as structural objects,
+    not newline characters. To operate across paragraph boundaries, use
+    format_document with 'delete' action, or chain multiple replace_text calls.
     """
     drive = auth.get_drive_service()
     meta = await asyncio.to_thread(
