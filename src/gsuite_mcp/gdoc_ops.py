@@ -23,6 +23,7 @@ async def template_populate(
     parent_folder_id: str,
     new_title: str,
     replacements: dict[str, str],
+    post_styles: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Copy a template file as a native Google Doc and replace placeholders.
 
