@@ -105,3 +105,81 @@ async def test_template_populate_zero_occurrences(mock_services):
     )
 
     assert result["replacements_made"] == {"{{MISSING}}": 0}
+
+
+@pytest.mark.asyncio
+async def test_template_populate_with_post_styles(mock_services):
+    drive = mock_services["drive"]
+    docs = mock_services["docs"]
+
+    drive.files().copy.return_value.execute.return_value = {
+        "id": "new_styled",
+        "name": "Styled Doc",
+        "webViewLink": "https://docs.google.com/document/d/new_styled/edit",
+    }
+    docs.documents().batchUpdate.return_value.execute.return_value = {
+        "replies": [
+            {"replaceAllText": {"occurrencesChanged": 1}},
+        ]
+    }
+    # format_document needs documents().get() for doc structure
+    docs.documents().get.return_value.execute.return_value = {
+        "body": {"content": [
+            {
+                "startIndex": 0, "endIndex": 20,
+                "paragraph": {
+                    "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+                    "elements": [{"startIndex": 0, "endIndex": 20,
+                                  "textRun": {"content": "Executive Summary\n"}}],
+                },
+            },
+        ]}
+    }
+
+    from gsuite_mcp.gdoc_ops import template_populate
+    result = await template_populate(
+        drive_service=drive,
+        docs_service=docs,
+        template_file_id="tmpl1",
+        parent_folder_id="folder1",
+        new_title="Styled Doc",
+        replacements={"{{NAME}}": "Alice"},
+        post_styles=[
+            {"action": "set_style", "find_text": "Executive Summary", "style": "HEADING_1"},
+        ],
+    )
+
+    assert result["file_id"] == "new_styled"
+    assert result["replacements_made"] == {"{{NAME}}": 1}
+    assert "post_styles_result" in result
+
+
+@pytest.mark.asyncio
+async def test_template_populate_post_styles_none(mock_services):
+    """post_styles=None should not call format_document."""
+    drive = mock_services["drive"]
+    docs = mock_services["docs"]
+
+    drive.files().copy.return_value.execute.return_value = {
+        "id": "new123",
+        "name": "No Styles",
+        "webViewLink": "https://docs.google.com/document/d/new123/edit",
+    }
+    docs.documents().batchUpdate.return_value.execute.return_value = {
+        "replies": [{"replaceAllText": {"occurrencesChanged": 1}}]
+    }
+
+    from gsuite_mcp.gdoc_ops import template_populate
+    result = await template_populate(
+        drive_service=drive,
+        docs_service=docs,
+        template_file_id="tmpl1",
+        parent_folder_id="folder1",
+        new_title="No Styles",
+        replacements={"{{NAME}}": "Bob"},
+    )
+
+    assert result["file_id"] == "new123"
+    assert "post_styles_result" not in result
+    # documents().get() should NOT be called (format_document not invoked)
+    docs.documents().get.assert_not_called()

@@ -643,8 +643,13 @@ async def format_document(
 
         # --- Text-matching actions ----------------------------------------
         find_text = op["find_text"]
-        use_substring = bool(op.get("substring", False))
         mm = op.get("match_mode", "exact")
+        # match_mode takes precedence; only fall back to substring flag
+        # when match_mode is at its default ("exact") and not explicitly set.
+        if "match_mode" in op:
+            use_substring = False
+        else:
+            use_substring = bool(op.get("substring", False))
         matches = _find_paragraphs_matching(
             content, find_text, substring=use_substring, match_mode=mm,
         )
