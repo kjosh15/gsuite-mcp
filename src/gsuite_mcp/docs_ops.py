@@ -548,6 +548,26 @@ async def format_document(
                     "retryable": False,
                     "message": f"Operation {i}: 'find_text' is required and must be non-blank.",
                 }
+        if action != "delete_by_index":
+            mm = op.get("match_mode", "exact")
+            if mm not in ("exact", "substring", "regex"):
+                return {
+                    "error": "INVALID_MATCH_MODE",
+                    "retryable": False,
+                    "message": (
+                        f"Operation {i}: invalid match_mode '{mm}'. "
+                        f"Valid: exact, substring, regex."
+                    ),
+                }
+            if mm == "regex":
+                try:
+                    re.compile(op.get("find_text", ""))
+                except re.error as exc:
+                    return {
+                        "error": "INVALID_REGEX",
+                        "retryable": False,
+                        "message": f"Operation {i}: invalid regex '{op.get('find_text', '')}': {exc}",
+                    }
         if action == "set_style":
             style = op.get("style")
             if style not in VALID_NAMED_STYLES:
