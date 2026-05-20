@@ -105,7 +105,7 @@ async def search_files(service, query: str, max_results: int = 10) -> dict[str, 
         .list(
             q=query,
             pageSize=max_results,
-            fields="files(id,name,mimeType,modifiedTime,webViewLink,parents)",
+            fields="files(id,name,mimeType,modifiedTime,webViewLink,parents,trashed,trashedTime)",
         )
         .execute()
     )
