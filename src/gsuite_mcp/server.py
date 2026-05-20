@@ -329,7 +329,11 @@ async def format_document(
 
     Matching rules:
     - find_text matching is exact (strip + case-fold) by default.
-    - Add "substring": true on an operation for legacy substring matching.
+    - Add "substring": true on an operation for substring matching.
+    - Add "match_mode": "regex" for regex matching (case-sensitive; use (?i) for
+      case-insensitive). Invalid patterns return INVALID_REGEX error.
+    - "match_mode" takes precedence over "substring" flag. Valid values:
+      "exact" (default), "substring", "regex".
     - If a delete or set_style matches multiple paragraphs, it fails with
       a multi_match_error listing all matches (paragraph index + text snippet).
       Pass "match_all": true on the operation to apply to all matches.
