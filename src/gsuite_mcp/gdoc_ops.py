@@ -74,11 +74,21 @@ async def template_populate(
         count = reply.get("replaceAllText", {}).get("occurrencesChanged", 0)
         replacements_made[placeholder] = count
 
-    return {
+    result = {
         "file_id": new_file_id,
         "web_view_link": copied.get("webViewLink", ""),
         "replacements_made": replacements_made,
     }
+
+    if post_styles:
+        from gsuite_mcp import docs_ops
+
+        style_result = await docs_ops.format_document(
+            docs_service, new_file_id, post_styles
+        )
+        result["post_styles_result"] = style_result
+
+    return result
 
 
 async def suggest_edit(
