@@ -726,10 +726,15 @@ async def test_format_match_mode_substring_alias():
 
 @pytest.mark.asyncio
 async def test_format_match_mode_overrides_substring_flag():
-    """match_mode takes precedence over substring flag."""
+    """match_mode='exact' takes precedence over substring=True.
+
+    With substring=True alone, "Hello" would match "Hello World" via substring.
+    With match_mode='exact', the exact match requires the full text to equal
+    "Hello", so "Hello World" does NOT match — only the exact "Hello" paragraph.
+    """
     doc = _make_doc(
         (0, 10, "Hello\n", "NORMAL_TEXT"),
-        (10, 20, "hello\n", "NORMAL_TEXT"),
+        (10, 25, "Hello World\n", "NORMAL_TEXT"),
     )
     svc = _mock_docs_service(doc)
     result = await format_document(svc, "f1", [
@@ -738,6 +743,7 @@ async def test_format_match_mode_overrides_substring_flag():
     assert result["results"][0]["status"] == "applied"
     calls = svc.documents().batchUpdate.call_args
     requests = calls.kwargs["body"]["requests"]
+    # Only 1 delete: exact match on "Hello", NOT substring match on "Hello World"
     assert len(requests) == 1
 
 
