@@ -503,12 +503,16 @@ async def gdoc_template_populate(
     parent_folder_id: str,
     new_title: str,
     replacements: dict[str, str],
+    post_styles: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Copy a template file as a native Google Doc and replace placeholders.
 
     Copies the template using Drive files.copy with automatic .docx-to-Google-Doc
     conversion, places it in the specified parent folder, then issues a single
     documents.batchUpdate with replaceAllText for each placeholder.
+
+    Optionally applies paragraph formatting operations (same schema as
+    format_document) after placeholder replacement via post_styles.
 
     Returns {file_id, web_view_link, replacements_made: {placeholder: count}}.
     """
@@ -520,6 +524,7 @@ async def gdoc_template_populate(
             parent_folder_id=parent_folder_id,
             new_title=new_title,
             replacements=replacements,
+            post_styles=post_styles,
         )
     except HttpError as exc:
         status = exc.resp.status if exc.resp else 0
