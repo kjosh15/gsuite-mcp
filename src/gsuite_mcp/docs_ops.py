@@ -419,25 +419,43 @@ def _find_paragraphs_matching(
     find_text: str,
     *,
     substring: bool = False,
+    match_mode: str = "exact",
 ) -> list[tuple[int, dict]]:
     """Return all (block_index, block) pairs whose paragraph text matches.
 
-    Default: exact match after strip + casefold.
-    substring=True: legacy ``needle in text`` behavior.
+    match_mode controls matching behavior:
+    - "exact": strip + casefold equality (default)
+    - "substring": needle-in-text after strip + casefold
+    - "regex": ``re.search(find_text, text)`` — case-sensitive, no casefold
+
+    match_mode takes precedence over the legacy ``substring`` flag.
+    When match_mode is "exact" and substring=True, falls back to substring mode.
     """
-    needle = find_text.strip().casefold()
     matches: list[tuple[int, dict]] = []
-    for idx, block in enumerate(content):
-        para = block.get("paragraph")
-        if not para:
-            continue
-        text = _para_text(para).strip().casefold()
-        if substring:
-            if needle in text:
+    effective_mode = match_mode if match_mode != "exact" else ("substring" if substring else "exact")
+
+    if effective_mode == "regex":
+        pattern = re.compile(find_text)
+        for idx, block in enumerate(content):
+            para = block.get("paragraph")
+            if not para:
+                continue
+            text = _para_text(para).strip()
+            if pattern.search(text):
                 matches.append((idx, block))
-        else:
-            if text == needle:
-                matches.append((idx, block))
+    else:
+        needle = find_text.strip().casefold()
+        for idx, block in enumerate(content):
+            para = block.get("paragraph")
+            if not para:
+                continue
+            text = _para_text(para).strip().casefold()
+            if effective_mode == "substring":
+                if needle in text:
+                    matches.append((idx, block))
+            else:
+                if text == needle:
+                    matches.append((idx, block))
     return matches
 
 
