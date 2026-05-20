@@ -15,7 +15,7 @@ async def download_file(
 ) -> dict[str, Any]:
     metadata = await asyncio.to_thread(
         lambda: service.files()
-        .get(fileId=file_id, fields="name,mimeType,size")
+        .get(fileId=file_id, fields="name,mimeType,size,trashed,trashedTime")
         .execute()
     )
     if export_format:
@@ -28,13 +28,17 @@ async def download_file(
         content = await asyncio.to_thread(
             lambda: service.files().get_media(fileId=file_id).execute()
         )
-    return {
+    result = {
         "file_id": file_id,
         "file_name": metadata["name"],
         "mime_type": metadata.get("mimeType", ""),
         "size_bytes": len(content),
         "content_base64": base64.b64encode(content).decode(),
+        "trashed": metadata.get("trashed", False),
     }
+    if metadata.get("trashedTime"):
+        result["trashed_time"] = metadata["trashedTime"]
+    return result
 
 
 async def upload_file(
