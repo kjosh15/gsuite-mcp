@@ -198,69 +198,87 @@ async def replace_section(
     delete_start = heading["start_index"] if include_heading else heading["end_index"]
     delete_end = section_end
 
-    if delete_start >= delete_end and not include_heading:
-        return {
-            "error": "EMPTY_SECTION",
-            "retryable": False,
-            "message": (
-                f"Section '{heading['text']}' has no body content to replace. "
-                "Use include_heading=True to replace the heading itself."
-            ),
-        }
+    # Detect empty section body (heading immediately followed by next heading)
+    empty_section = delete_start >= delete_end and not include_heading
 
     # Ensure trailing newline
     if not new_content.endswith("\n"):
         new_content += "\n"
 
-    characters_deleted = delete_end - delete_start
     characters_inserted = len(new_content)
 
-    # Clamp delete range to avoid the structural trailing newline
-    delete_end_clamped = _clamp_delete_end(delete_end, content)
+    if empty_section:
+        # No body to delete — insert after the heading
+        insert_index = heading["end_index"]
+        characters_deleted = 0
 
-    requests: list[dict] = [
-        {
-            "deleteContentRange": {
-                "range": {
-                    "startIndex": delete_start,
-                    "endIndex": delete_end_clamped,
+        requests: list[dict] = [
+            {
+                "insertText": {
+                    "location": {"index": insert_index},
+                    "text": new_content,
                 }
-            }
-        },
-        {
-            "insertText": {
-                "location": {"index": delete_start},
-                "text": new_content,
-            }
-        },
-        {
-            "updateParagraphStyle": {
-                "range": {
-                    "startIndex": delete_start,
-                    "endIndex": delete_start + characters_inserted,
-                },
-                "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
-                "fields": "namedStyleType",
-            }
-        },
-    ]
+            },
+            {
+                "updateParagraphStyle": {
+                    "range": {
+                        "startIndex": insert_index,
+                        "endIndex": insert_index + characters_inserted,
+                    },
+                    "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+                    "fields": "namedStyleType",
+                }
+            },
+        ]
+    else:
+        characters_deleted = delete_end - delete_start
 
-    # Restore heading style on first inserted paragraph when include_heading
-    if include_heading and heading["heading_level"] in _HEADING_RANKS:
-        first_newline = new_content.find("\n")
-        first_para_end = delete_start + first_newline + 1
-        requests.append({
-            "updateParagraphStyle": {
-                "range": {
-                    "startIndex": delete_start,
-                    "endIndex": first_para_end,
-                },
-                "paragraphStyle": {
-                    "namedStyleType": heading["heading_level"],
-                },
-                "fields": "namedStyleType",
-            }
-        })
+        # Clamp delete range to avoid the structural trailing newline
+        delete_end_clamped = _clamp_delete_end(delete_end, content)
+
+        requests = [
+            {
+                "deleteContentRange": {
+                    "range": {
+                        "startIndex": delete_start,
+                        "endIndex": delete_end_clamped,
+                    }
+                }
+            },
+            {
+                "insertText": {
+                    "location": {"index": delete_start},
+                    "text": new_content,
+                }
+            },
+            {
+                "updateParagraphStyle": {
+                    "range": {
+                        "startIndex": delete_start,
+                        "endIndex": delete_start + characters_inserted,
+                    },
+                    "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+                    "fields": "namedStyleType",
+                }
+            },
+        ]
+
+        # Restore heading style on first inserted paragraph when include_heading
+        if include_heading and heading["heading_level"] in _HEADING_RANKS:
+            first_newline = new_content.find("\n")
+            first_para_end = delete_start + first_newline + 1
+            requests.append({
+                "updateParagraphStyle": {
+                    "range": {
+                        "startIndex": delete_start,
+                        "endIndex": first_para_end,
+                    },
+                    "paragraphStyle": {
+                        "namedStyleType": heading["heading_level"],
+                    },
+                    "fields": "namedStyleType",
+                }
+            })
 
     await retry_transient(
         lambda: docs_service.documents()
