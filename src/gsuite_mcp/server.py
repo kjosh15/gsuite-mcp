@@ -377,9 +377,11 @@ async def format_document(
     drive = auth.get_drive_service()
     meta = await asyncio.to_thread(
         lambda: drive.files()
-        .get(fileId=file_id, fields="name,mimeType,modifiedTime")
+        .get(fileId=file_id, fields="name,mimeType,modifiedTime,trashed,trashedTime")
         .execute()
     )
+    if meta.get("trashed"):
+        return _trashed_error(file_id, meta)
     if meta.get("mimeType") != GOOGLE_DOC_MIME:
         return {
             "error": "NOT_A_GOOGLE_DOC",
