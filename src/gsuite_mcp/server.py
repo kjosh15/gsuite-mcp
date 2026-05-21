@@ -88,7 +88,9 @@ async def search_files(query: str, max_results: int = 10) -> dict[str, Any]:
 
 @mcp.tool()
 async def get_file_metadata(file_id: str) -> dict[str, Any]:
-    """Get metadata for a Google Drive file without downloading its content."""
+    """Get metadata for a Google Drive file without downloading its content.
+
+    Returns trashed: true with trashed_time if the file is in Drive trash."""
     return await drive_ops.get_file_metadata(auth.get_drive_service(), file_id)
 
 
@@ -115,7 +117,7 @@ async def append_to_file(
     - Other files: download-concat-upload fallback
 
     Returns {file_id, file_name, mime_type, bytes_appended, modified_time, mode}.
-    """
+    Refuses trashed files with error: TRASHED_FILE."""
     drive = auth.get_drive_service()
     meta = await asyncio.to_thread(
         lambda: drive.files()
@@ -196,7 +198,7 @@ async def replace_text(
     will not match — Google Docs treats paragraph breaks as structural objects,
     not newline characters. To operate across paragraph boundaries, use
     format_document with 'delete' action, or chain multiple replace_text calls.
-    """
+    Refuses trashed files with error: TRASHED_FILE."""
     drive = auth.get_drive_service()
     meta = await asyncio.to_thread(
         lambda: drive.files()
@@ -287,7 +289,8 @@ async def replace_section(
             if include_heading=True).
         include_heading: If True, also replace the heading paragraph itself.
             Default False (preserve heading, replace only body).
-    """
+
+    Refuses trashed files with error: TRASHED_FILE."""
     drive = auth.get_drive_service()
     meta = await asyncio.to_thread(
         lambda: drive.files()
