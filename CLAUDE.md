@@ -23,7 +23,7 @@ uv run python -m gsuite_mcp.auth_setup
 
 - `src/gsuite_mcp/auth.py` — OAuth user credential loader + service factories
 - `src/gsuite_mcp/auth_setup.py` — one-time OAuth consent CLI
-- `src/gsuite_mcp/drive_ops.py` — Drive v3 operations (download, upload, search, metadata, comments)
+- `src/gsuite_mcp/drive_ops.py` — Drive v3 operations (download, upload, search, metadata, comments, trash/untrash)
 - `src/gsuite_mcp/docs_ops.py` — Docs v1 operations (append, replace_text, replace_section)
 - `src/gsuite_mcp/sheets_ops.py` — Sheets v4 operations (append rows)
 - `src/gsuite_mcp/docx_edits.py` — OOXML tracked-changes (pure functions)
