@@ -61,6 +61,15 @@ async def upload_file(
     parent_folder_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Upload a file to Google Drive (create or update)."""
+    if file_id:
+        drive = auth.get_drive_service()
+        meta = await asyncio.to_thread(
+            lambda: drive.files()
+            .get(fileId=file_id, fields="name,trashed,trashedTime")
+            .execute()
+        )
+        if meta.get("trashed"):
+            return _trashed_error(file_id, meta)
     return await drive_ops.upload_file(
         auth.get_drive_service(),
         content_base64,
