@@ -51,6 +51,8 @@ uv run python -m gsuite_mcp.auth_setup
 12. `create_reply_draft` — thread-aware Gmail draft creation (draft only, human sends)
 13. `gdoc_template_populate` — copy template → native Google Doc, replace placeholders
 14. `gdoc_suggest_edit` — export Google Doc as .docx, apply tracked change, re-upload as new .docx
+15. `trash_file` — move a file to Drive trash (reversible within 30 days)
+16. `untrash_file` — restore a trashed file from Drive trash
 
 ## Environment Variables
 
