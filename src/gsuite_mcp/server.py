@@ -119,9 +119,11 @@ async def append_to_file(
     drive = auth.get_drive_service()
     meta = await asyncio.to_thread(
         lambda: drive.files()
-        .get(fileId=file_id, fields="name,mimeType,modifiedTime")
+        .get(fileId=file_id, fields="name,mimeType,modifiedTime,trashed,trashedTime")
         .execute()
     )
+    if meta.get("trashed"):
+        return _trashed_error(file_id, meta)
     mime = meta.get("mimeType", "")
     name = meta.get("name", "")
 
