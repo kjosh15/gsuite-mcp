@@ -8,6 +8,10 @@ def mock_drive():
     with patch("gsuite_mcp.auth.get_drive_service") as mock:
         service = MagicMock()
         mock.return_value = service
+        # Default metadata for trashed check (live file)
+        service.files().get.return_value.execute.return_value = {
+            "name": "Test File", "trashed": False,
+        }
         yield service
 
 
