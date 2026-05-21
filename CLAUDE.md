@@ -32,7 +32,7 @@ uv run python -m gsuite_mcp.auth_setup
 - `src/gsuite_mcp/retry.py` — retry helper with exponential backoff for transient Google API errors (5xx, 429)
 - `src/gsuite_mcp/api_key_middleware.py` — Starlette auth middleware (bearer token or `?key=` query param)
 - `src/gsuite_mcp/server.py` — FastMCP server exposing 16 tools (refuses to start without `GSUITE_MCP_API_KEY`)
-- `tests/` — pytest suite mirroring the module split (132 tests)
+- `tests/` — pytest suite mirroring the module split (159 tests)
 - `docs/DEPLOYMENT.md` — deployment runbook (Cloud Run topology, Secret Manager layout, key rotation, smoke tests, client config)
 
 ## Tools
