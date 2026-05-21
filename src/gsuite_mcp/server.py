@@ -439,6 +439,15 @@ async def manage_comments(
     if action == "list":
         return await drive_ops.list_comments(drive, file_id, include_resolved)
 
+    if action in ("create", "reply", "resolve"):
+        meta = await asyncio.to_thread(
+            lambda: drive.files()
+            .get(fileId=file_id, fields="name,trashed,trashedTime")
+            .execute()
+        )
+        if meta.get("trashed"):
+            return _trashed_error(file_id, meta)
+
     if action == "create":
         if not content:
             return {
@@ -486,9 +495,11 @@ async def docx_suggest_edit(
     drive = auth.get_drive_service()
     meta = await asyncio.to_thread(
         lambda: drive.files()
-        .get(fileId=file_id, fields="name,mimeType,size")
+        .get(fileId=file_id, fields="name,mimeType,size,trashed,trashedTime")
         .execute()
     )
+    if meta.get("trashed"):
+        return _trashed_error(file_id, meta)
     if meta.get("mimeType") != DOCX_MIME:
         return {
             "error": "NOT_A_DOCX",
@@ -612,6 +623,36 @@ async def gdoc_suggest_edit(
             "message": (
                 f"Google API error (HTTP {status}) during suggest edit: {exc}"
             ),
+        }
+
+
+@mcp.tool()
+async def trash_file(file_id: str) -> dict[str, Any]:
+    """Move a file to Drive trash. Reversible within 30 days via untrash_file."""
+    try:
+        return await drive_ops.trash_file(auth.get_drive_service(), file_id)
+    except HttpError as exc:
+        status = exc.resp.status if exc.resp else 0
+        return {
+            "error": "GOOGLE_API_ERROR",
+            "retryable": status in TRANSIENT_CODES,
+            "http_status": status,
+            "message": f"Google Drive API error (HTTP {status}): {exc}",
+        }
+
+
+@mcp.tool()
+async def untrash_file(file_id: str) -> dict[str, Any]:
+    """Restore a trashed file from Drive trash."""
+    try:
+        return await drive_ops.untrash_file(auth.get_drive_service(), file_id)
+    except HttpError as exc:
+        status = exc.resp.status if exc.resp else 0
+        return {
+            "error": "GOOGLE_API_ERROR",
+            "retryable": status in TRANSIENT_CODES,
+            "http_status": status,
+            "message": f"Google Drive API error (HTTP {status}): {exc}",
         }
 
 
