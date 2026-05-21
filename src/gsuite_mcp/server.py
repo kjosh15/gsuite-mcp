@@ -23,6 +23,21 @@ DOCX_MIME = (
 )
 
 
+def _trashed_error(file_id: str, meta: dict) -> dict[str, Any]:
+    """Return a structured TRASHED_FILE error dict."""
+    return {
+        "error": "TRASHED_FILE",
+        "file_id": file_id,
+        "file_name": meta.get("name", ""),
+        "trashed_time": meta.get("trashedTime", ""),
+        "retryable": False,
+        "message": (
+            "Cannot modify trashed file. Restore via Drive UI "
+            "or call untrash_file first, or use a different file ID."
+        ),
+    }
+
+
 @mcp.tool()
 async def download_file(
     file_id: str,
