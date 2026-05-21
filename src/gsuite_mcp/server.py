@@ -376,7 +376,7 @@ async def format_document(
       index + first 80 chars + action) without executing any changes.
 
     Only works on Google Docs (mimeType application/vnd.google-apps.document).
-    """
+    Refuses trashed files with error: TRASHED_FILE."""
     drive = auth.get_drive_service()
     meta = await asyncio.to_thread(
         lambda: drive.files()
