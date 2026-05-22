@@ -62,3 +62,23 @@ def test_flatten_doc_text_empty_doc():
     flat, index_map = _flatten_doc_text(doc)
     assert flat == ""
     assert index_map == []
+
+
+def test_count_occurrences_exact_case_sensitive():
+    flat = "foo bar foo baz Foo"
+    assert _count_occurrences(flat, "foo", match_case=True, regex=False) == 2
+
+
+def test_count_occurrences_exact_case_insensitive():
+    flat = "foo bar foo baz Foo"
+    assert _count_occurrences(flat, "foo", match_case=False, regex=False) == 3
+
+
+def test_count_occurrences_regex():
+    flat = "version v1.2 and v3.4 text"
+    assert _count_occurrences(flat, r"v\d+\.\d+", match_case=True, regex=True) == 2
+
+
+def test_count_occurrences_no_match():
+    flat = "hello world"
+    assert _count_occurrences(flat, "xyz", match_case=True, regex=False) == 0
