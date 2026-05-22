@@ -94,10 +94,6 @@ def test_resolve_path_include_children():
 # Integration tests — read_paragraph_at_path MCP tool
 # ---------------------------------------------------------------------------
 
-import pytest
-from unittest.mock import patch, MagicMock
-
-
 @pytest.fixture
 def mock_services():
     with patch("gsuite_mcp.auth.get_drive_service") as mock_drive, \
