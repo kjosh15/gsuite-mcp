@@ -338,3 +338,45 @@ async def test_replace_text_expected_count_regex_mismatch(mock_services):
     )
     assert result["error"] == "COUNT_MISMATCH"
     assert result["actual_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_replace_text_with_preceded_by(mock_services):
+    drive = mock_services["drive"]
+    docs = mock_services["docs"]
+    drive.files().get.return_value.execute.return_value = {
+        "name": "doc", "mimeType": "application/vnd.google-apps.document",
+        "modifiedTime": "2026-04-10T12:00:00Z",
+    }
+    docs.documents().get.return_value.execute.return_value = {
+        "body": {
+            "content": [
+                {
+                    "startIndex": 1, "endIndex": 50,
+                    "paragraph": {
+                        "elements": [
+                            {"startIndex": 1, "endIndex": 50,
+                             "textRun": {"content": "In section A: foo is here.\n"}}
+                        ]
+                    },
+                },
+                {
+                    "startIndex": 50, "endIndex": 100,
+                    "paragraph": {
+                        "elements": [
+                            {"startIndex": 50, "endIndex": 100,
+                             "textRun": {"content": "In section B: foo is here too.\n"}}
+                        ]
+                    },
+                },
+            ]
+        }
+    }
+    docs.documents().batchUpdate.return_value.execute.return_value = {"replies": []}
+
+    from gsuite_mcp.server import replace_text
+    result = await replace_text(
+        file_id="d1", find="foo", replace="bar", preceded_by="section A"
+    )
+    assert result["replacements_made"] == 1
+    assert result.get("context_filtered") is True
