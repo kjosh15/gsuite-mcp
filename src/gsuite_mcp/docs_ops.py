@@ -58,6 +58,18 @@ def _flatten_doc_text(doc: dict) -> tuple[str, list[int]]:
     return "".join(flat_parts), index_map
 
 
+def _count_occurrences(
+    flat_text: str, find: str, *, match_case: bool, regex: bool
+) -> int:
+    """Count occurrences of *find* in *flat_text*."""
+    if regex:
+        flags = 0 if match_case else re.IGNORECASE
+        return len(re.findall(find, flat_text, flags))
+    if not match_case:
+        return flat_text.casefold().count(find.casefold())
+    return flat_text.count(find)
+
+
 def _find_heading(
     doc: dict,
     section_heading: str,
