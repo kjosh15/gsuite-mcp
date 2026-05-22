@@ -383,26 +383,7 @@ async def replace_regex(
         .execute()
     )
 
-    # Build (absolute_index, text) segments from all textRuns
-    segments: list[tuple[int, str]] = []
-    for block in doc.get("body", {}).get("content", []):
-        para = block.get("paragraph")
-        if not para:
-            continue
-        for elem in para.get("elements", []):
-            tr = elem.get("textRun")
-            if not tr:
-                continue
-            segments.append((elem["startIndex"], tr.get("content", "")))
-
-    # Flatten into one big string with an index map
-    flat_parts: list[str] = []
-    index_map: list[int] = []  # index_map[i] = absolute doc index of char i
-    for start_idx, text in segments:
-        for offset, _ch in enumerate(text):
-            flat_parts.append(_ch)
-            index_map.append(start_idx + offset)
-    flat = "".join(flat_parts)
+    flat, index_map = _flatten_doc_text(doc)
 
     matches = list(regex.finditer(flat))
     if not matches:
