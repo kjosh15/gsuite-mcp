@@ -189,6 +189,8 @@ async def replace_text(
     match_case: bool = True,
     regex: bool = False,
     expected_count: Optional[int] = None,
+    preceded_by: Optional[str] = None,
+    followed_by: Optional[str] = None,
 ) -> dict[str, Any]:
     """Replace text in a Google Doc. Exact match by default; regex optional.
 
@@ -203,6 +205,11 @@ async def replace_text(
     When expected_count is set, fetches the document first and counts
     occurrences client-side. If the count doesn't match, returns a
     COUNT_MISMATCH error and no mutation occurs.
+
+    When preceded_by and/or followed_by are set, uses client-side matching
+    to filter occurrences by surrounding context (within 200 chars).
+    Only matching occurrences are replaced. Composes with regex and
+    expected_count (count checked after context filtering).
 
     Refuses trashed files with error: TRASHED_FILE."""
     drive = auth.get_drive_service()
