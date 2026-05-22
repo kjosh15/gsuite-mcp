@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from googleapiclient.errors import HttpError
 
-from gsuite_mcp.docs_ops import format_document, VALID_NAMED_STYLES
+from gsuite_mcp.docs_ops import format_document, VALID_NAMED_STYLES, _validate_text_style
 
 
 def _make_doc(*paragraphs):
