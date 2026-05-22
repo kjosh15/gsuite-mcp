@@ -1078,6 +1078,40 @@ async def format_document(
                     "start_index": matches[0][1]["startIndex"],
                 })
 
+        elif action == "set_text_style":
+            style = op["style"]
+            fields_mask = ",".join(sorted(style.keys()))
+            for block_idx, block in matches:
+                text_snippet = _para_text(block["paragraph"]).strip()[:80]
+                if preview:
+                    results.append({
+                        "action": "set_text_style",
+                        "find_text": find_text,
+                        "style": style,
+                        "paragraph_index": block_idx,
+                        "text": text_snippet,
+                        "status": "would_apply",
+                    })
+                else:
+                    pending.append((block["startIndex"], {
+                        "updateTextStyle": {
+                            "range": {
+                                "startIndex": block["startIndex"],
+                                "endIndex": block["endIndex"],
+                            },
+                            "textStyle": style,
+                            "fields": fields_mask,
+                        }
+                    }))
+            if not preview:
+                results.append({
+                    "action": "set_text_style",
+                    "find_text": find_text,
+                    "style": style,
+                    "status": "applied",
+                    "start_index": matches[0][1]["startIndex"],
+                })
+
         elif action == "delete":
             total_chars = 0
             for block_idx, block in matches:
