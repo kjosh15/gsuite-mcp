@@ -1,5 +1,5 @@
 # tests/test_replace_in_context.py
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 import pytest
 
 # Build two paragraphs separated by >200 chars of padding so the
