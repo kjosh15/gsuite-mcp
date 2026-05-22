@@ -34,6 +34,30 @@ def _para_text(paragraph: dict) -> str:
     return "".join(parts)
 
 
+def _flatten_doc_text(doc: dict) -> tuple[str, list[int]]:
+    """Flatten all textRun content into a single string with an index map.
+
+    Returns (flat_text, index_map) where index_map[i] is the absolute
+    document index of flat_text[i].
+    """
+    flat_parts: list[str] = []
+    index_map: list[int] = []
+    for block in doc.get("body", {}).get("content", []):
+        para = block.get("paragraph")
+        if not para:
+            continue
+        for elem in para.get("elements", []):
+            tr = elem.get("textRun")
+            if not tr:
+                continue
+            start_idx = elem["startIndex"]
+            content = tr.get("content", "")
+            for offset, ch in enumerate(content):
+                flat_parts.append(ch)
+                index_map.append(start_idx + offset)
+    return "".join(flat_parts), index_map
+
+
 def _find_heading(
     doc: dict,
     section_heading: str,
