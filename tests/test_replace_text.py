@@ -173,7 +173,7 @@ async def test_replace_text_returns_structured_error_on_google_500(mock_services
 
     assert result["error"] == "GOOGLE_API_ERROR"
     assert result["retryable"] is True
-    assert "500" in result["message"]
+    assert "500" in str(result["message"])
 
 
 @pytest.mark.asyncio
