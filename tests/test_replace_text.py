@@ -231,3 +231,110 @@ async def test_replace_text_regex_returns_structured_error_on_google_500(mock_se
 
     assert result["error"] == "GOOGLE_API_ERROR"
     assert result["retryable"] is True
+
+
+@pytest.mark.asyncio
+async def test_replace_text_expected_count_match_proceeds(mock_services):
+    """When expected_count matches actual, replacement proceeds normally."""
+    drive = mock_services["drive"]
+    docs = mock_services["docs"]
+    drive.files().get.return_value.execute.return_value = {
+        "name": "doc", "mimeType": "application/vnd.google-apps.document",
+        "modifiedTime": "2026-04-10T12:00:00Z",
+    }
+    # documents.get for pre-check
+    docs.documents().get.return_value.execute.return_value = {
+        "body": {
+            "content": [
+                {
+                    "startIndex": 1, "endIndex": 20,
+                    "paragraph": {
+                        "elements": [
+                            {"startIndex": 1, "endIndex": 20,
+                             "textRun": {"content": "foo bar foo baz\n"}}
+                        ]
+                    },
+                }
+            ]
+        }
+    }
+    docs.documents().batchUpdate.return_value.execute.return_value = {
+        "replies": [{"replaceAllText": {"occurrencesChanged": 2}}]
+    }
+
+    from gsuite_mcp.server import replace_text
+    result = await replace_text(
+        file_id="d1", find="foo", replace="qux", expected_count=2
+    )
+    assert result["replacements_made"] == 2
+    assert "error" not in result
+
+
+@pytest.mark.asyncio
+async def test_replace_text_expected_count_mismatch_blocks(mock_services):
+    """When expected_count doesn't match, no mutation happens."""
+    drive = mock_services["drive"]
+    docs = mock_services["docs"]
+    drive.files().get.return_value.execute.return_value = {
+        "name": "doc", "mimeType": "application/vnd.google-apps.document",
+        "modifiedTime": "2026-04-10T12:00:00Z",
+    }
+    docs.documents().get.return_value.execute.return_value = {
+        "body": {
+            "content": [
+                {
+                    "startIndex": 1, "endIndex": 20,
+                    "paragraph": {
+                        "elements": [
+                            {"startIndex": 1, "endIndex": 20,
+                             "textRun": {"content": "foo bar foo baz\n"}}
+                        ]
+                    },
+                }
+            ]
+        }
+    }
+
+    from gsuite_mcp.server import replace_text
+    result = await replace_text(
+        file_id="d1", find="foo", replace="qux", expected_count=1
+    )
+    assert result["error"] == "COUNT_MISMATCH"
+    assert result["expected_count"] == 1
+    assert result["actual_count"] == 2
+    # batchUpdate should NOT have been called
+    docs.documents().batchUpdate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_replace_text_expected_count_regex_mismatch(mock_services):
+    """expected_count works with regex mode too."""
+    drive = mock_services["drive"]
+    docs = mock_services["docs"]
+    drive.files().get.return_value.execute.return_value = {
+        "name": "doc", "mimeType": "application/vnd.google-apps.document",
+        "modifiedTime": "2026-04-10T12:00:00Z",
+    }
+    docs.documents().get.return_value.execute.return_value = {
+        "body": {
+            "content": [
+                {
+                    "startIndex": 1, "endIndex": 30,
+                    "paragraph": {
+                        "elements": [
+                            {"startIndex": 1, "endIndex": 30,
+                             "textRun": {"content": "v1.2 and v3.4 and v5.6\n"}}
+                        ]
+                    },
+                }
+            ]
+        }
+    }
+
+    from gsuite_mcp.server import replace_text
+    result = await replace_text(
+        file_id="d1", find=r"v\d+\.\d+", replace="vX",
+        regex=True, expected_count=2
+    )
+    assert result["error"] == "COUNT_MISMATCH"
+    assert result["actual_count"] == 3
