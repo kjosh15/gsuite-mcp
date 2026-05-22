@@ -1,6 +1,6 @@
 """Tests for docs_ops helper functions (pure / no API calls)."""
 
-from gsuite_mcp.docs_ops import _flatten_doc_text
+from gsuite_mcp.docs_ops import _flatten_doc_text, _count_occurrences
 
 
 def test_flatten_doc_text_single_paragraph():
