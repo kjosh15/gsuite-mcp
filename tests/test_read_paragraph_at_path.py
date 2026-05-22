@@ -1,5 +1,4 @@
 # tests/test_read_paragraph_at_path.py
-import pytest
 from gsuite_mcp.docs_ops import _build_doc_tree, _resolve_path
 
 
