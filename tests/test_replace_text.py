@@ -348,23 +348,36 @@ async def test_replace_text_with_preceded_by(mock_services):
         "name": "doc", "mimeType": "application/vnd.google-apps.document",
         "modifiedTime": "2026-04-10T12:00:00Z",
     }
+    # Paragraphs must be >200 chars apart so only the first "foo" has
+    # "section A" within the 200-char context window.
+    filler = "x" * 220
     docs.documents().get.return_value.execute.return_value = {
         "body": {
             "content": [
                 {
-                    "startIndex": 1, "endIndex": 50,
+                    "startIndex": 1, "endIndex": 28,
                     "paragraph": {
                         "elements": [
-                            {"startIndex": 1, "endIndex": 50,
+                            {"startIndex": 1, "endIndex": 28,
                              "textRun": {"content": "In section A: foo is here.\n"}}
                         ]
                     },
                 },
                 {
-                    "startIndex": 50, "endIndex": 100,
+                    "startIndex": 28, "endIndex": 28 + len(filler) + 1,
                     "paragraph": {
                         "elements": [
-                            {"startIndex": 50, "endIndex": 100,
+                            {"startIndex": 28, "endIndex": 28 + len(filler) + 1,
+                             "textRun": {"content": filler + "\n"}}
+                        ]
+                    },
+                },
+                {
+                    "startIndex": 28 + len(filler) + 1, "endIndex": 28 + len(filler) + 1 + 31,
+                    "paragraph": {
+                        "elements": [
+                            {"startIndex": 28 + len(filler) + 1,
+                             "endIndex": 28 + len(filler) + 1 + 31,
                              "textRun": {"content": "In section B: foo is here too.\n"}}
                         ]
                     },
