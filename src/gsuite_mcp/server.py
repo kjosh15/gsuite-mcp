@@ -233,6 +233,29 @@ async def replace_text(
     docs = auth.get_docs_service()
 
     try:
+        # Context-anchored mode: use client-side approach
+        if preceded_by is not None or followed_by is not None:
+            result = await docs_ops.replace_in_context(
+                docs, file_id, find, replace, match_case,
+                preceded_by=preceded_by, followed_by=followed_by,
+                regex=regex, expected_count=expected_count,
+            )
+            if isinstance(result, dict) and "error" in result:
+                return result
+            count = result
+            meta2 = await asyncio.to_thread(
+                lambda: drive.files()
+                .get(fileId=file_id, fields="modifiedTime")
+                .execute()
+            )
+            return {
+                "file_id": file_id,
+                "replacements_made": count,
+                "regex_mode": regex,
+                "context_filtered": True,
+                "modified_time": meta2.get("modifiedTime", ""),
+            }
+
         if regex:
             try:
                 result = await docs_ops.replace_regex(
