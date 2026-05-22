@@ -459,6 +459,145 @@ async def replace_regex(
 
 
 # ---------------------------------------------------------------------------
+# Context-anchored replacement
+# ---------------------------------------------------------------------------
+
+CONTEXT_WINDOW = 200
+
+
+def _find_all_substring(
+    text: str, needle: str, match_case: bool
+) -> list[tuple[int, int]]:
+    """Find all (start, end) positions of needle in text."""
+    if not match_case:
+        search_text = text.casefold()
+        search_needle = needle.casefold()
+    else:
+        search_text = text
+        search_needle = needle
+    results: list[tuple[int, int]] = []
+    start = 0
+    while True:
+        idx = search_text.find(search_needle, start)
+        if idx == -1:
+            break
+        results.append((idx, idx + len(needle)))
+        start = idx + 1
+    return results
+
+
+def _normalize_matches(
+    matches: list, regex: bool
+) -> list[tuple[int, int]]:
+    """Normalize regex Match objects or (start, end) tuples to (start, end)."""
+    if regex:
+        return [(m.start(), m.end()) for m in matches]
+    return matches
+
+
+async def replace_in_context(
+    docs_service,
+    file_id: str,
+    find: str,
+    replace: str,
+    match_case: bool,
+    preceded_by: str | None = None,
+    followed_by: str | None = None,
+    regex: bool = False,
+    expected_count: int | None = None,
+) -> int | dict[str, Any]:
+    """Replace text with context-anchor filtering.
+
+    Finds all occurrences of *find*, then keeps only those where
+    *preceded_by* appears within 200 chars before the match and/or
+    *followed_by* appears within 200 chars after. Executes filtered
+    replacements as a single batchUpdate.
+    """
+    doc = await asyncio.to_thread(
+        lambda: docs_service.documents()
+        .get(documentId=file_id)
+        .execute()
+    )
+    flat, index_map = _flatten_doc_text(doc)
+
+    if regex:
+        flags = 0 if match_case else re.IGNORECASE
+        pattern = re.compile(find, flags)
+        raw_matches = list(pattern.finditer(flat))
+    else:
+        raw_matches = _find_all_substring(flat, find, match_case)
+
+    # Filter by context anchors
+    filtered: list[tuple[int, int]] = []
+    for m_start, m_end in _normalize_matches(raw_matches, regex):
+        if preceded_by is not None:
+            window_start = max(0, m_start - CONTEXT_WINDOW)
+            before_text = flat[window_start:m_start]
+            if match_case:
+                if preceded_by not in before_text:
+                    continue
+            else:
+                if preceded_by.casefold() not in before_text.casefold():
+                    continue
+        if followed_by is not None:
+            window_end = min(len(flat), m_end + CONTEXT_WINDOW)
+            after_text = flat[m_end:window_end]
+            if match_case:
+                if followed_by not in after_text:
+                    continue
+            else:
+                if followed_by.casefold() not in after_text.casefold():
+                    continue
+        filtered.append((m_start, m_end))
+
+    if expected_count is not None and len(filtered) != expected_count:
+        return {
+            "error": "COUNT_MISMATCH",
+            "retryable": False,
+            "expected_count": expected_count,
+            "actual_count": len(filtered),
+            "message": (
+                f"Expected {expected_count} occurrence(s) but found "
+                f"{len(filtered)} after context filtering. No changes made."
+            ),
+        }
+
+    if not filtered:
+        return 0
+
+    # Build requests in REVERSE order so earlier-index edits don't shift later ones
+    requests: list[dict] = []
+    for m_start, m_end in reversed(filtered):
+        abs_start = index_map[m_start]
+        abs_end = index_map[m_end - 1] + 1
+        if regex:
+            flags = 0 if match_case else re.IGNORECASE
+            replacement_text = re.compile(find, flags).search(
+                flat[m_start:m_end]
+            ).expand(replace)
+        else:
+            replacement_text = replace
+        requests.append({
+            "deleteContentRange": {
+                "range": {"startIndex": abs_start, "endIndex": abs_end}
+            }
+        })
+        requests.append({
+            "insertText": {
+                "location": {"index": abs_start},
+                "text": replacement_text,
+            }
+        })
+
+    await retry_transient(
+        lambda: docs_service.documents()
+        .batchUpdate(documentId=file_id, body={"requests": requests})
+        .execute()
+    )
+    return len(filtered)
+
+
+# ---------------------------------------------------------------------------
 # Batched document formatting
 # ---------------------------------------------------------------------------
 
