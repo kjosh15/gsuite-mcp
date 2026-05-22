@@ -183,7 +183,7 @@ curl -s -X POST "$URL" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"smoke","version":"0.0"}}}' \
   -w "\nHTTP %{http_code}\n"
 
-# 3. tools/list → expect 16 tools
+# 3. tools/list → expect 17 tools
 curl -s -X POST "$URL" \
   -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer $KEY" \
