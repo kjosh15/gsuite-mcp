@@ -406,8 +406,9 @@ async def replace_all_text(
 
 
 async def replace_regex(
-    docs_service, file_id: str, pattern: str, replacement: str, match_case: bool
-) -> int:
+    docs_service, file_id: str, pattern: str, replacement: str, match_case: bool,
+    expected_count: int | None = None,
+) -> int | dict[str, Any]:
     """Regex replace client-side via batched delete+insert requests."""
     flags = 0 if match_case else re.IGNORECASE
     regex = re.compile(pattern, flags)
@@ -421,6 +422,14 @@ async def replace_regex(
     flat, index_map = _flatten_doc_text(doc)
 
     matches = list(regex.finditer(flat))
+    if expected_count is not None and len(matches) != expected_count:
+        return {
+            "error": "COUNT_MISMATCH",
+            "retryable": False,
+            "expected_count": expected_count,
+            "actual_count": len(matches),
+            "message": f"Expected {expected_count} occurrence(s) but found {len(matches)}. No changes made.",
+        }
     if not matches:
         return 0
 
