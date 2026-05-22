@@ -926,3 +926,196 @@ async def test_set_text_style_preview():
     assert result["results"][0]["status"] == "would_apply"
     assert result["results"][0]["action"] == "set_text_style"
     svc.documents().batchUpdate.assert_not_called()
+
+
+# -------------------------------------------------------------------
+# format_document — insert_paragraph
+# -------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_insert_paragraph_basic():
+    """Insert plain paragraph after a given content block index."""
+    doc = _make_doc(
+        (0, 14, "Introduction\n", "HEADING_1"),
+        (14, 30, "Body paragraph.\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph", "after_paragraph_index": 0, "text": "New item"},
+    ])
+
+    assert "error" not in result
+    assert result["operations_applied"] == 1
+    assert result["results"][0]["status"] == "applied"
+    assert result["results"][0]["characters_inserted"] == len("New item\n")
+
+    call_args = svc.documents().batchUpdate.call_args
+    requests = call_args.kwargs["body"]["requests"]
+    insert_req = requests[0]["insertText"]
+    assert insert_req["location"]["index"] == 14  # endIndex of paragraph 0
+    assert insert_req["text"] == "New item\n"
+
+
+@pytest.mark.asyncio
+async def test_insert_paragraph_appends_newline():
+    """Text without trailing newline gets one appended."""
+    doc = _make_doc(
+        (0, 14, "Introduction\n", "HEADING_1"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph", "after_paragraph_index": 0, "text": "No newline"},
+    ])
+
+    call_args = svc.documents().batchUpdate.call_args
+    requests = call_args.kwargs["body"]["requests"]
+    assert requests[0]["insertText"]["text"] == "No newline\n"
+
+
+@pytest.mark.asyncio
+async def test_insert_paragraph_preserves_existing_newline():
+    """Text already ending with newline is not double-newlined."""
+    doc = _make_doc(
+        (0, 14, "Introduction\n", "HEADING_1"),
+    )
+    svc = _mock_docs_service(doc)
+    await format_document(svc, "f1", [
+        {"action": "insert_paragraph", "after_paragraph_index": 0, "text": "Has newline\n"},
+    ])
+
+    call_args = svc.documents().batchUpdate.call_args
+    requests = call_args.kwargs["body"]["requests"]
+    assert requests[0]["insertText"]["text"] == "Has newline\n"
+
+
+@pytest.mark.asyncio
+async def test_insert_paragraph_with_text_style():
+    """Insert paragraph with italic text style."""
+    doc = _make_doc(
+        (0, 14, "Introduction\n", "HEADING_1"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph", "after_paragraph_index": 0,
+         "text": "Styled item", "text_style": {"italic": True}},
+    ])
+
+    assert result["operations_applied"] == 1
+    call_args = svc.documents().batchUpdate.call_args
+    requests = call_args.kwargs["body"]["requests"]
+    # insertText + updateTextStyle
+    assert len(requests) == 2
+    assert "insertText" in requests[1]  # sorted descending: style at index 14 first, insert at 14
+    style_req = requests[0]["updateTextStyle"]
+    assert style_req["textStyle"]["italic"] is True
+    assert style_req["fields"] == "italic"
+
+
+@pytest.mark.asyncio
+async def test_insert_paragraph_inherits_list():
+    """Insert inherits list_id and nesting_level from neighbor paragraph."""
+    doc = _make_doc(
+        (0, 14, "Introduction\n", "HEADING_1"),
+        (14, 30, "List item one\n", "NORMAL_TEXT"),
+    )
+    # Add bullet to paragraph 1
+    doc["body"]["content"][1]["paragraph"]["bullet"] = {
+        "listId": "kix.list123",
+        "nestingLevel": 0,
+    }
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph", "after_paragraph_index": 1, "text": "List item two"},
+    ])
+
+    assert result["operations_applied"] == 1
+    # The insert happens at the endIndex of a list paragraph,
+    # so Google Docs auto-inherits the list formatting.
+    # We verify the insert location is correct.
+    call_args = svc.documents().batchUpdate.call_args
+    requests = call_args.kwargs["body"]["requests"]
+    assert requests[0]["insertText"]["location"]["index"] == 30
+
+
+@pytest.mark.asyncio
+async def test_insert_paragraph_override_nesting_level():
+    """Explicit nesting_level override generates updateParagraphStyle request."""
+    doc = _make_doc(
+        (0, 14, "Introduction\n", "HEADING_1"),
+        (14, 30, "List item one\n", "NORMAL_TEXT"),
+    )
+    doc["body"]["content"][1]["paragraph"]["bullet"] = {
+        "listId": "kix.list123",
+        "nestingLevel": 0,
+    }
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph", "after_paragraph_index": 1,
+         "text": "Nested item", "nesting_level": 1},
+    ])
+
+    assert result["operations_applied"] == 1
+    call_args = svc.documents().batchUpdate.call_args
+    requests = call_args.kwargs["body"]["requests"]
+    # Should have insertText + updateParagraphStyle for indentation
+    has_insert = any("insertText" in r for r in requests)
+    has_indent = any("updateParagraphStyle" in r for r in requests)
+    assert has_insert
+    assert has_indent
+
+
+@pytest.mark.asyncio
+async def test_insert_paragraph_out_of_range():
+    doc = _make_doc(
+        (0, 14, "Introduction\n", "HEADING_1"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph", "after_paragraph_index": 99, "text": "x"},
+    ])
+    assert result["results"][0]["status"] == "index_out_of_range"
+    svc.documents().batchUpdate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_insert_paragraph_missing_text():
+    svc = _mock_docs_service(_make_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph", "after_paragraph_index": 0},
+    ])
+    assert result["error"] == "MISSING_TEXT"
+
+
+@pytest.mark.asyncio
+async def test_insert_paragraph_missing_index():
+    svc = _mock_docs_service(_make_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph", "text": "hello"},
+    ])
+    assert result["error"] == "MISSING_PARAGRAPH_INDEX"
+
+
+@pytest.mark.asyncio
+async def test_insert_paragraph_invalid_text_style():
+    svc = _mock_docs_service(_make_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph", "after_paragraph_index": 0,
+         "text": "x", "text_style": {"color": "red"}},
+    ])
+    assert result["error"] == "INVALID_TEXT_STYLE"
+
+
+@pytest.mark.asyncio
+async def test_insert_paragraph_preview():
+    doc = _make_doc(
+        (0, 14, "Introduction\n", "HEADING_1"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph", "after_paragraph_index": 0, "text": "New"},
+    ], preview=True)
+
+    assert result["preview"] is True
+    assert result["results"][0]["status"] == "would_apply"
+    assert result["results"][0]["action"] == "insert_paragraph"
+    svc.documents().batchUpdate.assert_not_called()
