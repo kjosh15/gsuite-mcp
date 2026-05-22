@@ -23,6 +23,23 @@ VALID_NAMED_STYLES: set[str] = {
     *(f"HEADING_{i}" for i in range(1, 7)),
 }
 
+VALID_TEXT_STYLE_KEYS = {"bold", "italic", "underline", "strikethrough"}
+
+
+def _validate_text_style(text_style: Any) -> str | None:
+    """Validate a text_style dict. Returns error message or None if valid."""
+    if not isinstance(text_style, dict):
+        return "text_style must be a dict."
+    if not text_style:
+        return "text_style must contain at least one key from: bold, italic, underline, strikethrough."
+    unknown = set(text_style.keys()) - VALID_TEXT_STYLE_KEYS
+    if unknown:
+        return f"Unknown text_style keys: {', '.join(sorted(unknown))}. Valid: bold, italic, underline, strikethrough."
+    for key, val in text_style.items():
+        if not isinstance(val, bool):
+            return f"text_style['{key}'] must be a boolean, got {type(val).__name__}."
+    return None
+
 
 def _para_text(paragraph: dict) -> str:
     """Extract plain text from a paragraph's elements (concatenated textRuns)."""
