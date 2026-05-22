@@ -743,6 +743,46 @@ async def create_reply_draft(
     )
 
 
+@mcp.tool()
+async def read_paragraph_at_path(
+    file_id: str,
+    path: str,
+    include_children: bool = False,
+) -> dict[str, Any]:
+    """Read a paragraph by navigating a document's heading/list structure via path.
+
+    Path segments are delimited by ' / ' (space-slash-space).
+    Each segment matches by case-insensitive text prefix, or by positional
+    index '#N' (1-based) among siblings.
+
+    Example: "TASKS / Career / Careers that allow" or "TASKS / Career / #2"
+
+    Args:
+        file_id: Google Drive file ID of a native Google Doc.
+        path: Path to the target paragraph.
+        include_children: If True, include child paragraphs in the response.
+
+    Only works on Google Docs (mimeType application/vnd.google-apps.document).
+    """
+    drive = auth.get_drive_service()
+    meta = await asyncio.to_thread(
+        lambda: drive.files()
+        .get(fileId=file_id, fields="name,mimeType")
+        .execute()
+    )
+    if meta.get("mimeType") != GOOGLE_DOC_MIME:
+        return {
+            "error": "NOT_A_GOOGLE_DOC",
+            "retryable": False,
+            "message": (
+                f"read_paragraph_at_path only works on Google Docs. "
+                f"This file is {meta.get('mimeType')}."
+            ),
+        }
+    docs = auth.get_docs_service()
+    return await docs_ops.read_at_path(docs, file_id, path, include_children)
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
