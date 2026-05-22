@@ -53,6 +53,7 @@ uv run python -m gsuite_mcp.auth_setup
 14. `gdoc_suggest_edit` — export Google Doc as .docx, apply tracked change, re-upload as new .docx
 15. `trash_file` — move a file to Drive trash (reversible within 30 days)
 16. `untrash_file` — restore a trashed file from Drive trash
+17. `read_paragraph_at_path` — navigate Google Doc heading/list structure via path syntax (e.g. `TASKS / Career / #2`), returns text + indices
 
 ## Environment Variables
 
