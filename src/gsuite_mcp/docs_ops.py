@@ -1026,7 +1026,7 @@ async def format_document(
             continue
 
         # Multi-match protection for delete and set_style
-        if action in ("delete", "set_style") and len(matches) > 1:
+        if action in ("delete", "set_style", "set_text_style") and len(matches) > 1:
             if not op.get("match_all", False):
                 results.append({
                     "action": action,
