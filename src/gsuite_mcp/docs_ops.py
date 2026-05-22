@@ -362,9 +362,32 @@ async def append_text_to_doc(
 
 
 async def replace_all_text(
-    docs_service, file_id: str, find: str, replace: str, match_case: bool
-) -> int:
-    """Exact-match replace across a Google Doc. Returns occurrence count."""
+    docs_service, file_id: str, find: str, replace: str, match_case: bool,
+    expected_count: int | None = None,
+) -> int | dict[str, Any]:
+    """Exact-match replace across a Google Doc. Returns occurrence count.
+
+    When expected_count is set, fetches the document first and counts
+    occurrences client-side. Returns a COUNT_MISMATCH error dict if
+    the count doesn't match -- no mutation occurs.
+    """
+    if expected_count is not None:
+        doc = await asyncio.to_thread(
+            lambda: docs_service.documents()
+            .get(documentId=file_id)
+            .execute()
+        )
+        flat, _ = _flatten_doc_text(doc)
+        actual = _count_occurrences(flat, find, match_case=match_case, regex=False)
+        if actual != expected_count:
+            return {
+                "error": "COUNT_MISMATCH",
+                "retryable": False,
+                "expected_count": expected_count,
+                "actual_count": actual,
+                "message": f"Expected {expected_count} occurrence(s) but found {actual}. No changes made.",
+            }
+
     requests = [
         {
             "replaceAllText": {
