@@ -2,24 +2,34 @@
 from unittest.mock import patch, MagicMock
 import pytest
 
+# Build two paragraphs separated by >200 chars of padding so the
+# CONTEXT_WINDOW (200) cannot reach from one paragraph's context into
+# the other paragraph's "foo".
+_PAD = "x" * 220  # 220-char filler to push paragraphs apart
+_PARA1 = "In section A: replace foo with bar here.\n"
+_PARA2 = f"In section B: {_PAD} keep foo unchanged here.\n"
+_PARA2_LEN = len(_PARA2)
+
 SAMPLE_DOC = {
     "body": {
         "content": [
             {
-                "startIndex": 1, "endIndex": 50,
+                "startIndex": 1, "endIndex": 1 + len(_PARA1),
                 "paragraph": {
                     "elements": [
-                        {"startIndex": 1, "endIndex": 50,
-                         "textRun": {"content": "In section A: replace foo with bar here.\n"}}
+                        {"startIndex": 1, "endIndex": 1 + len(_PARA1),
+                         "textRun": {"content": _PARA1}}
                     ]
                 },
             },
             {
-                "startIndex": 50, "endIndex": 100,
+                "startIndex": 1 + len(_PARA1),
+                "endIndex": 1 + len(_PARA1) + _PARA2_LEN,
                 "paragraph": {
                     "elements": [
-                        {"startIndex": 50, "endIndex": 100,
-                         "textRun": {"content": "In section B: keep foo unchanged here.\n"}}
+                        {"startIndex": 1 + len(_PARA1),
+                         "endIndex": 1 + len(_PARA1) + _PARA2_LEN,
+                         "textRun": {"content": _PARA2}}
                     ]
                 },
             },
