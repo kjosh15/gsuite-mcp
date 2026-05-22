@@ -759,3 +759,39 @@ async def test_format_invalid_match_mode():
     ])
     assert result["error"] == "INVALID_MATCH_MODE"
     assert result["retryable"] is False
+
+
+# -------------------------------------------------------------------
+# _validate_text_style helper
+# -------------------------------------------------------------------
+
+def test_validate_text_style_valid():
+    assert _validate_text_style({"bold": True}) is None
+    assert _validate_text_style({"italic": True, "strikethrough": False}) is None
+    assert _validate_text_style({"bold": True, "italic": True, "underline": True, "strikethrough": True}) is None
+
+
+def test_validate_text_style_empty():
+    err = _validate_text_style({})
+    assert err is not None
+    assert "at least one" in err
+
+
+def test_validate_text_style_unknown_key():
+    err = _validate_text_style({"italic": True, "color": "red"})
+    assert err is not None
+    assert "color" in err
+
+
+def test_validate_text_style_non_bool():
+    err = _validate_text_style({"bold": "yes"})
+    assert err is not None
+    assert "boolean" in err
+
+
+def test_validate_text_style_not_a_dict():
+    err = _validate_text_style("italic")
+    assert err is not None
+
+    err2 = _validate_text_style(None)
+    assert err2 is not None
