@@ -84,3 +84,68 @@ def test_resolve_path_include_children():
     assert len(node.get("children", [])) == 2
     assert node["children"][0]["text"] == "Teaching English"
     assert node["children"][1]["text"] == "Software engineering"
+
+
+# ---------------------------------------------------------------------------
+# Integration tests — read_paragraph_at_path MCP tool
+# ---------------------------------------------------------------------------
+
+import pytest
+from unittest.mock import patch, MagicMock
+
+
+@pytest.fixture
+def mock_services():
+    with patch("gsuite_mcp.auth.get_drive_service") as mock_drive, \
+         patch("gsuite_mcp.auth.get_docs_service") as mock_docs:
+        drive = MagicMock()
+        docs = MagicMock()
+        mock_drive.return_value = drive
+        mock_docs.return_value = docs
+        drive.files().get.return_value.execute.return_value = {
+            "name": "doc", "mimeType": "application/vnd.google-apps.document",
+        }
+        docs.documents().get.return_value.execute.return_value = {
+            "body": {"content": SAMPLE_CONTENT}
+        }
+        yield {"drive": drive, "docs": docs}
+
+
+@pytest.mark.asyncio
+async def test_read_paragraph_at_path_tool(mock_services):
+    from gsuite_mcp.server import read_paragraph_at_path
+    result = await read_paragraph_at_path(
+        file_id="d1", path="TASKS / Career / Careers that allow"
+    )
+    assert "Careers that allow" in result["text"]
+    assert result["nesting_level"] == 1
+    assert "children" not in result
+
+
+@pytest.mark.asyncio
+async def test_read_paragraph_at_path_with_children(mock_services):
+    from gsuite_mcp.server import read_paragraph_at_path
+    result = await read_paragraph_at_path(
+        file_id="d1", path="TASKS / Career / Careers that allow",
+        include_children=True,
+    )
+    assert len(result["children"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_read_paragraph_at_path_not_found(mock_services):
+    from gsuite_mcp.server import read_paragraph_at_path
+    result = await read_paragraph_at_path(
+        file_id="d1", path="TASKS / Nonexistent"
+    )
+    assert result["error"] == "PATH_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_read_paragraph_at_path_not_a_doc(mock_services):
+    mock_services["drive"].files().get.return_value.execute.return_value = {
+        "name": "file.txt", "mimeType": "text/plain",
+    }
+    from gsuite_mcp.server import read_paragraph_at_path
+    result = await read_paragraph_at_path(file_id="d1", path="anything")
+    assert result["error"] == "NOT_A_GOOGLE_DOC"
