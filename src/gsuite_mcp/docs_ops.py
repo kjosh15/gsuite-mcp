@@ -699,6 +699,53 @@ def _resolve_path(
     return node
 
 
+async def read_at_path(
+    docs_service,
+    file_id: str,
+    path: str,
+    include_children: bool = False,
+) -> dict[str, Any]:
+    """Read a paragraph by navigating a path through the document tree."""
+    doc = await asyncio.to_thread(
+        lambda: docs_service.documents()
+        .get(documentId=file_id)
+        .execute()
+    )
+    content = doc.get("body", {}).get("content", [])
+    tree = _build_doc_tree(content)
+    segments = [s.strip() for s in path.split(" / ")]
+    node = _resolve_path(tree, segments)
+
+    if node is None:
+        return {
+            "error": "PATH_NOT_FOUND",
+            "retryable": False,
+            "message": f"No paragraph found at path: {path}",
+        }
+
+    result: dict[str, Any] = {
+        "file_id": file_id,
+        "path": path,
+        "text": node["text"],
+        "paragraph_index": node["paragraph_index"],
+        "nesting_level": node["nesting_level"],
+        "start_index": node["start_index"],
+        "end_index": node["end_index"],
+    }
+    if include_children:
+        result["children"] = [
+            {
+                "text": c["text"],
+                "nesting_level": c["nesting_level"],
+                "paragraph_index": c["paragraph_index"],
+                "start_index": c["start_index"],
+                "end_index": c["end_index"],
+            }
+            for c in node.get("children", [])
+        ]
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Batched document formatting
 # ---------------------------------------------------------------------------
