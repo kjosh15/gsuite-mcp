@@ -228,8 +228,9 @@ async def replace_text(
     try:
         if regex:
             try:
-                count = await docs_ops.replace_regex(
-                    docs, file_id, find, replace, match_case
+                result = await docs_ops.replace_regex(
+                    docs, file_id, find, replace, match_case,
+                    expected_count=expected_count,
                 )
             except re.error as e:
                 return {
@@ -237,6 +238,9 @@ async def replace_text(
                     "retryable": False,
                     "message": f"Invalid regex pattern: {e}",
                 }
+            if isinstance(result, dict) and "error" in result:
+                return result
+            count = result
             meta2 = await asyncio.to_thread(
                 lambda: drive.files()
                 .get(fileId=file_id, fields="modifiedTime")
@@ -249,9 +253,13 @@ async def replace_text(
                 "modified_time": meta2.get("modifiedTime", ""),
             }
 
-        count = await docs_ops.replace_all_text(
-            docs, file_id, find, replace, match_case
+        result = await docs_ops.replace_all_text(
+            docs, file_id, find, replace, match_case,
+            expected_count=expected_count,
         )
+        if isinstance(result, dict) and "error" in result:
+            return result
+        count = result
         meta2 = await asyncio.to_thread(
             lambda: drive.files()
             .get(fileId=file_id, fields="modifiedTime")
