@@ -894,6 +894,30 @@ async def format_document(
                     "retryable": False,
                     "message": f"Operation {i}: 'paragraph_index' is required and must be an integer.",
                 }
+        elif action == "insert_paragraph":
+            pi = op.get("after_paragraph_index")
+            if not isinstance(pi, int):
+                return {
+                    "error": "MISSING_PARAGRAPH_INDEX",
+                    "retryable": False,
+                    "message": f"Operation {i}: 'after_paragraph_index' is required and must be an integer.",
+                }
+            text = op.get("text")
+            if not isinstance(text, str) or not text.strip():
+                return {
+                    "error": "MISSING_TEXT",
+                    "retryable": False,
+                    "message": f"Operation {i}: 'text' is required and must be non-blank.",
+                }
+            ts = op.get("text_style")
+            if ts is not None:
+                err = _validate_text_style(ts)
+                if err:
+                    return {
+                        "error": "INVALID_TEXT_STYLE",
+                        "retryable": False,
+                        "message": f"Operation {i}: {err}",
+                    }
         else:
             find_text = op.get("find_text", "")
             if not isinstance(find_text, str) or not find_text.strip():
