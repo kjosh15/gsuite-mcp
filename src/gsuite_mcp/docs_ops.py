@@ -933,6 +933,15 @@ async def format_document(
                         f"Valid styles: {', '.join(sorted(VALID_NAMED_STYLES))}."
                     ),
                 }
+        if action == "set_text_style":
+            ts = op.get("style")
+            err = _validate_text_style(ts)
+            if err:
+                return {
+                    "error": "INVALID_TEXT_STYLE",
+                    "retryable": False,
+                    "message": f"Operation {i}: {err}",
+                }
 
     # -- Fetch document ----------------------------------------------------
     doc = await asyncio.to_thread(
