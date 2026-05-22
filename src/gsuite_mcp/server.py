@@ -188,6 +188,7 @@ async def replace_text(
     replace: str,
     match_case: bool = True,
     regex: bool = False,
+    expected_count: Optional[int] = None,
 ) -> dict[str, Any]:
     """Replace text in a Google Doc. Exact match by default; regex optional.
 
@@ -198,6 +199,11 @@ async def replace_text(
     will not match — Google Docs treats paragraph breaks as structural objects,
     not newline characters. To operate across paragraph boundaries, use
     format_document with 'delete' action, or chain multiple replace_text calls.
+
+    When expected_count is set, fetches the document first and counts
+    occurrences client-side. If the count doesn't match, returns a
+    COUNT_MISMATCH error and no mutation occurs.
+
     Refuses trashed files with error: TRASHED_FILE."""
     drive = auth.get_drive_service()
     meta = await asyncio.to_thread(
