@@ -795,3 +795,134 @@ def test_validate_text_style_not_a_dict():
 
     err2 = _validate_text_style(None)
     assert err2 is not None
+
+
+# -------------------------------------------------------------------
+# format_document — set_text_style
+# -------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_set_text_style_basic():
+    """set_text_style applies italic to a matched paragraph."""
+    doc = _make_doc(
+        (0, 14, "Introduction\n", "NORMAL_TEXT"),
+        (14, 30, "Some body text.\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "set_text_style", "find_text": "Introduction", "style": {"italic": True}},
+    ])
+
+    assert "error" not in result
+    assert result["operations_applied"] == 1
+    assert result["results"][0]["status"] == "applied"
+
+    call_args = svc.documents().batchUpdate.call_args
+    requests = call_args.kwargs["body"]["requests"]
+    assert len(requests) == 1
+    style_req = requests[0]["updateTextStyle"]
+    assert style_req["range"]["startIndex"] == 0
+    assert style_req["range"]["endIndex"] == 14
+    assert style_req["textStyle"]["italic"] is True
+    assert style_req["fields"] == "italic"
+
+
+@pytest.mark.asyncio
+async def test_set_text_style_multiple_properties():
+    """set_text_style with multiple style properties builds correct fields mask."""
+    doc = _make_doc(
+        (0, 14, "Introduction\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "set_text_style", "find_text": "Introduction",
+         "style": {"bold": True, "strikethrough": False}},
+    ])
+
+    assert result["operations_applied"] == 1
+    call_args = svc.documents().batchUpdate.call_args
+    requests = call_args.kwargs["body"]["requests"]
+    style_req = requests[0]["updateTextStyle"]
+    assert style_req["textStyle"]["bold"] is True
+    assert style_req["textStyle"]["strikethrough"] is False
+    # fields should contain both keys (order may vary)
+    fields = set(style_req["fields"].split(","))
+    assert fields == {"bold", "strikethrough"}
+
+
+@pytest.mark.asyncio
+async def test_set_text_style_not_found():
+    doc = _make_doc(
+        (0, 14, "Introduction\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "set_text_style", "find_text": "Nonexistent", "style": {"italic": True}},
+    ])
+    assert result["results"][0]["status"] == "not_found"
+    svc.documents().batchUpdate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_text_style_multi_match_error():
+    doc = _make_doc(
+        (0, 10, "Duplicate\n", "NORMAL_TEXT"),
+        (10, 20, "Duplicate\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "set_text_style", "find_text": "Duplicate", "style": {"italic": True}},
+    ])
+    assert result["results"][0]["status"] == "multi_match_error"
+
+
+@pytest.mark.asyncio
+async def test_set_text_style_match_all():
+    doc = _make_doc(
+        (0, 10, "Duplicate\n", "NORMAL_TEXT"),
+        (10, 20, "Duplicate\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "set_text_style", "find_text": "Duplicate",
+         "style": {"italic": True}, "match_all": True},
+    ])
+    assert result["operations_applied"] == 1
+    assert result["results"][0]["status"] == "applied"
+    call_args = svc.documents().batchUpdate.call_args
+    requests = call_args.kwargs["body"]["requests"]
+    assert len(requests) == 2
+
+
+@pytest.mark.asyncio
+async def test_set_text_style_invalid_style():
+    svc = _mock_docs_service(_make_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_text_style", "find_text": "x", "style": {"color": "red"}},
+    ])
+    assert result["error"] == "INVALID_TEXT_STYLE"
+
+
+@pytest.mark.asyncio
+async def test_set_text_style_missing_style():
+    svc = _mock_docs_service(_make_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_text_style", "find_text": "x"},
+    ])
+    assert result["error"] == "INVALID_TEXT_STYLE"
+
+
+@pytest.mark.asyncio
+async def test_set_text_style_preview():
+    doc = _make_doc(
+        (0, 14, "Introduction\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "set_text_style", "find_text": "Introduction", "style": {"italic": True}},
+    ], preview=True)
+
+    assert result["preview"] is True
+    assert result["results"][0]["status"] == "would_apply"
+    assert result["results"][0]["action"] == "set_text_style"
+    svc.documents().batchUpdate.assert_not_called()
