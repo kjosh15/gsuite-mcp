@@ -874,7 +874,7 @@ async def format_document(
             "message": "operations list must contain at least one operation.",
         }
 
-    valid_actions = {"set_style", "set_text_style", "delete", "delete_empty_after", "delete_by_index"}
+    valid_actions = {"set_style", "set_text_style", "delete", "delete_empty_after", "delete_by_index", "insert_paragraph"}
     for i, op in enumerate(operations):
         action = op.get("action")
         if action not in valid_actions:
