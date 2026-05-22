@@ -598,6 +598,108 @@ async def replace_in_context(
 
 
 # ---------------------------------------------------------------------------
+# Document tree builder for path-based navigation
+# ---------------------------------------------------------------------------
+
+
+def _build_doc_tree(content: list[dict]) -> list[dict]:
+    """Build a tree from document content using headings and bullet nesting.
+
+    Returns a list of top-level nodes. Each node has:
+    - text: paragraph text (stripped)
+    - start_index, end_index: document indices
+    - paragraph_index: index in content list
+    - nesting_level: 0 for headings, bullet nestingLevel for list items
+    - heading_level: named style if a heading, else None
+    - children: list of child nodes
+    """
+    def _make_node(block: dict, block_idx: int) -> dict:
+        para = block["paragraph"]
+        text = _para_text(para).strip()
+        style = para.get("paragraphStyle", {}).get("namedStyleType", "")
+        bullet = para.get("bullet")
+        nesting = bullet["nestingLevel"] if bullet else 0
+        return {
+            "text": text,
+            "start_index": block["startIndex"],
+            "end_index": block["endIndex"],
+            "paragraph_index": block_idx,
+            "nesting_level": nesting,
+            "heading_level": style if style in _HEADING_RANKS else None,
+            "children": [],
+        }
+
+    # Collect all paragraph nodes
+    all_nodes: list[dict] = []
+    for idx, block in enumerate(content):
+        if not block.get("paragraph"):
+            continue
+        all_nodes.append(_make_node(block, idx))
+
+    if not all_nodes:
+        return []
+
+    # Build tree: headings are top-level, bullets nest by nestingLevel
+    root: list[dict] = []
+    stack: list[tuple[dict, int]] = []  # (node, depth)
+
+    for node in all_nodes:
+        if node["heading_level"] is not None:
+            # Heading: always top-level
+            root.append(node)
+            stack = [(node, -1)]
+        else:
+            depth = node["nesting_level"]
+            # Pop stack until we find a parent at a lower depth
+            while stack and stack[-1][1] >= depth:
+                stack.pop()
+            if stack:
+                stack[-1][0]["children"].append(node)
+            else:
+                root.append(node)
+            stack.append((node, depth))
+
+    return root
+
+
+def _resolve_path(
+    tree: list[dict], segments: list[str]
+) -> dict | None:
+    """Walk the tree by path segments, returning the matched node or None.
+
+    Each segment matches by:
+    1. Case-insensitive text prefix (first match wins)
+    2. Positional #N (1-based) if segment starts with '#'
+    """
+    current_children = tree
+    node = None
+
+    for segment in segments:
+        segment = segment.strip()
+        found = None
+
+        if segment.startswith("#") and segment[1:].isdigit():
+            # Positional index (1-based)
+            pos = int(segment[1:])
+            if 1 <= pos <= len(current_children):
+                found = current_children[pos - 1]
+        else:
+            # Text prefix match (case-insensitive)
+            needle = segment.casefold()
+            for child in current_children:
+                if child["text"].casefold().startswith(needle):
+                    found = child
+                    break
+
+        if found is None:
+            return None
+        node = found
+        current_children = found.get("children", [])
+
+    return node
+
+
+# ---------------------------------------------------------------------------
 # Batched document formatting
 # ---------------------------------------------------------------------------
 
