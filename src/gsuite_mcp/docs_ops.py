@@ -926,7 +926,7 @@ async def format_document(
                     "retryable": False,
                     "message": f"Operation {i}: 'find_text' is required and must be non-blank.",
                 }
-        if action != "delete_by_index":
+        if action not in ("delete_by_index", "insert_paragraph"):
             mm = op.get("match_mode", "exact")
             if mm not in ("exact", "substring", "regex"):
                 return {
