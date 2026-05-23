@@ -1137,3 +1137,142 @@ async def test_insert_paragraph_preview():
     assert result["results"][0]["status"] == "would_apply"
     assert result["results"][0]["action"] == "insert_paragraph"
     svc.documents().batchUpdate.assert_not_called()
+
+
+# -------------------------------------------------------------------
+# format_document — insert_paragraph_after_match
+# -------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_insert_after_match_basic():
+    """Insert paragraph after a matched paragraph."""
+    doc = _make_doc(
+        (0, 14, "Introduction\n", "HEADING_1"),
+        (14, 30, "First bullet.\n", "NORMAL_TEXT"),
+        (30, 50, "Second bullet.\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph_after_match", "find_text": "First bullet.",
+         "text": "Inserted after first"},
+    ])
+
+    assert "error" not in result
+    assert result["operations_applied"] == 1
+    assert result["results"][0]["status"] == "applied"
+
+    call_args = svc.documents().batchUpdate.call_args
+    requests = call_args.kwargs["body"]["requests"]
+    insert_req = requests[0]["insertText"]
+    assert insert_req["location"]["index"] == 30  # endIndex of "First bullet.\n"
+    assert insert_req["text"] == "Inserted after first\n"
+
+
+@pytest.mark.asyncio
+async def test_insert_after_match_not_found():
+    doc = _make_doc(
+        (0, 14, "Introduction\n", "HEADING_1"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph_after_match", "find_text": "Nonexistent",
+         "text": "x"},
+    ])
+    assert result["results"][0]["status"] == "not_found"
+
+
+@pytest.mark.asyncio
+async def test_insert_after_match_multi_match_error():
+    """Multiple matches returns multi_match_error (no match_all support)."""
+    doc = _make_doc(
+        (0, 10, "Duplicate\n", "NORMAL_TEXT"),
+        (10, 20, "Duplicate\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph_after_match", "find_text": "Duplicate",
+         "text": "x"},
+    ])
+    assert result["results"][0]["status"] == "multi_match_error"
+
+
+@pytest.mark.asyncio
+async def test_insert_after_match_with_text_style():
+    doc = _make_doc(
+        (0, 14, "Introduction\n", "HEADING_1"),
+        (14, 30, "Target line.\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph_after_match", "find_text": "Target line.",
+         "text": "Styled insert", "text_style": {"bold": True, "italic": True}},
+    ])
+
+    assert result["operations_applied"] == 1
+    call_args = svc.documents().batchUpdate.call_args
+    requests = call_args.kwargs["body"]["requests"]
+    has_style = any("updateTextStyle" in r for r in requests)
+    assert has_style
+
+
+@pytest.mark.asyncio
+async def test_insert_after_match_inherit_list():
+    """inherit_list_formatting copies bullet info from matched paragraph."""
+    doc = _make_doc(
+        (0, 14, "Introduction\n", "HEADING_1"),
+        (14, 30, "List item one\n", "NORMAL_TEXT"),
+    )
+    doc["body"]["content"][1]["paragraph"]["bullet"] = {
+        "listId": "kix.list123",
+        "nestingLevel": 0,
+    }
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph_after_match", "find_text": "List item one",
+         "text": "List item two", "inherit_list_formatting": True},
+    ])
+
+    assert result["operations_applied"] == 1
+    call_args = svc.documents().batchUpdate.call_args
+    requests = call_args.kwargs["body"]["requests"]
+    insert_req = requests[0]["insertText"]
+    assert insert_req["location"]["index"] == 30
+
+
+@pytest.mark.asyncio
+async def test_insert_after_match_substring_mode():
+    """Works with match_mode/substring options."""
+    doc = _make_doc(
+        (0, 30, "Hulda to explore the caves\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph_after_match", "find_text": "Hulda to explore",
+         "text": "Follow-up", "substring": True},
+    ])
+    assert result["results"][0]["status"] == "applied"
+
+
+@pytest.mark.asyncio
+async def test_insert_after_match_preview():
+    doc = _make_doc(
+        (0, 14, "Introduction\n", "HEADING_1"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph_after_match", "find_text": "Introduction",
+         "text": "New"},
+    ], preview=True)
+
+    assert result["preview"] is True
+    assert result["results"][0]["status"] == "would_apply"
+    svc.documents().batchUpdate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_insert_after_match_missing_text():
+    svc = _mock_docs_service(_make_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph_after_match", "find_text": "x"},
+    ])
+    assert result["error"] == "MISSING_TEXT"
