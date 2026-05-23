@@ -395,6 +395,12 @@ async def format_document(
       {"action": "set_style", "find_text": "Introduction", "style": "HEADING_1"}
       Valid styles: NORMAL_TEXT, TITLE, SUBTITLE, HEADING_1..HEADING_6.
 
+    - set_text_style: Apply inline text formatting to a paragraph.
+      {"action": "set_text_style", "find_text": "Introduction",
+       "style": {"italic": true, "bold": true}}
+      Valid style keys: bold, italic, underline, strikethrough.
+      Only specified keys are changed; omitted keys left unchanged.
+
     - delete: Delete a paragraph.
       {"action": "delete", "find_text": "Paragraph to remove"}
 
@@ -403,6 +409,18 @@ async def format_document(
 
     - delete_empty_after: Remove blank paragraphs after a matched paragraph.
       {"action": "delete_empty_after", "find_text": "Introduction"}
+
+    - insert_paragraph: Insert a new paragraph after a content block index.
+      {"action": "insert_paragraph", "after_paragraph_index": 3,
+       "text": "New item", "text_style": {"italic": true}}
+      Inherits list formatting from neighbor by default.
+      Optional overrides: nesting_level, list_id, text_style.
+
+    - insert_paragraph_after_match: Find a paragraph by text, insert after it.
+      {"action": "insert_paragraph_after_match", "find_text": "Existing item",
+       "text": "New item", "inherit_list_formatting": true}
+      Multi-match returns error (no match_all support).
+      Optional: inherit_list_formatting, nesting_level, list_id, text_style.
 
     Matching rules:
     - find_text matching is exact (strip + case-fold) by default.
