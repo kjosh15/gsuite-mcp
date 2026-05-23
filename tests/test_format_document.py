@@ -963,7 +963,7 @@ async def test_insert_paragraph_appends_newline():
         (0, 14, "Introduction\n", "HEADING_1"),
     )
     svc = _mock_docs_service(doc)
-    result = await format_document(svc, "f1", [
+    await format_document(svc, "f1", [
         {"action": "insert_paragraph", "after_paragraph_index": 0, "text": "No newline"},
     ])
 
