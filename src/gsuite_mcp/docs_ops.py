@@ -973,6 +973,30 @@ async def format_document(
                     "retryable": False,
                     "message": f"Operation {i}: {err}",
                 }
+        if action == "insert_paragraph_after_match":
+            text = op.get("text")
+            if not isinstance(text, str) or not text.strip():
+                return {
+                    "error": "MISSING_TEXT",
+                    "retryable": False,
+                    "message": f"Operation {i}: 'text' is required and must be non-blank.",
+                }
+            ts = op.get("text_style")
+            if ts is not None:
+                err = _validate_text_style(ts)
+                if err:
+                    return {
+                        "error": "INVALID_TEXT_STYLE",
+                        "retryable": False,
+                        "message": f"Operation {i}: {err}",
+                    }
+            nl = op.get("nesting_level")
+            if nl is not None and (not isinstance(nl, int) or nl < 0):
+                return {
+                    "error": "INVALID_NESTING_LEVEL",
+                    "retryable": False,
+                    "message": f"Operation {i}: 'nesting_level' must be a non-negative integer.",
+                }
 
     # -- Fetch document ----------------------------------------------------
     doc = await asyncio.to_thread(
