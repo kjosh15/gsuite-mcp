@@ -858,6 +858,21 @@ async def format_document(
       Delete consecutive empty/whitespace-only paragraphs immediately after
       the first matching paragraph.
 
+    - ``{"action": "set_text_style", "find_text": "...", "style": {"italic": true}}``
+      Apply inline text formatting (bold, italic, underline, strikethrough).
+      Only specified keys are changed; omitted keys left unchanged.
+      Same matching/multi-match rules as set_style.
+
+    - ``{"action": "insert_paragraph", "after_paragraph_index": N, "text": "..."}``
+      Insert a new paragraph after content block index *N*.
+      Inherits list formatting from neighbor by default.
+      Optional: ``text_style``, ``nesting_level``, ``list_id``.
+
+    - ``{"action": "insert_paragraph_after_match", "find_text": "...", "text": "..."}``
+      Find a paragraph by text match, insert a new paragraph after it.
+      Multi-match always returns error (no ``match_all`` support).
+      Optional: ``inherit_list_formatting``, ``text_style``, ``nesting_level``, ``list_id``.
+
     Top-level options:
 
     - ``preview=True``: Return the list of paragraphs each operation would
