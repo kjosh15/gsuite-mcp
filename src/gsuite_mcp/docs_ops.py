@@ -865,8 +865,8 @@ async def format_document(
 
     - ``{"action": "insert_paragraph", "after_paragraph_index": N, "text": "..."}``
       Insert a new paragraph after content block index *N*.
-      Inherits list formatting from neighbor by default.
-      Optional: ``text_style``, ``nesting_level``, ``list_id``.
+      Inherits list formatting from neighbor automatically (Google Docs API behavior).
+      Optional: ``text_style``, ``nesting_level``.
 
     - ``{"action": "insert_paragraph_after_match", "find_text": "...", "text": "..."}``
       Find a paragraph by text match, insert a new paragraph after it.
