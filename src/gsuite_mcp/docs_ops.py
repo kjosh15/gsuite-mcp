@@ -1028,6 +1028,84 @@ async def format_document(
                 })
             continue
 
+        # --- insert_paragraph: index-based insert --------------------------
+        if action == "insert_paragraph":
+            para_idx = op["after_paragraph_index"]
+            if para_idx < 0 or para_idx >= len(content):
+                results.append({
+                    "action": "insert_paragraph",
+                    "after_paragraph_index": para_idx,
+                    "status": "index_out_of_range",
+                })
+                continue
+            block = content[para_idx]
+            if not block.get("paragraph"):
+                results.append({
+                    "action": "insert_paragraph",
+                    "after_paragraph_index": para_idx,
+                    "status": "not_a_paragraph",
+                })
+                continue
+
+            insert_text = op["text"]
+            if not insert_text.endswith("\n"):
+                insert_text += "\n"
+            insert_index = block["endIndex"]
+            text_style = op.get("text_style")
+            nesting_override = op.get("nesting_level")
+
+            if preview:
+                results.append({
+                    "action": "insert_paragraph",
+                    "after_paragraph_index": para_idx,
+                    "text": insert_text.strip()[:80],
+                    "status": "would_apply",
+                })
+            else:
+                # insertText
+                pending.append((insert_index, {
+                    "insertText": {
+                        "location": {"index": insert_index},
+                        "text": insert_text,
+                    }
+                }))
+                # updateTextStyle if text_style provided
+                if text_style:
+                    fields_mask = ",".join(sorted(text_style.keys()))
+                    pending.append((insert_index, {
+                        "updateTextStyle": {
+                            "range": {
+                                "startIndex": insert_index,
+                                "endIndex": insert_index + len(insert_text),
+                            },
+                            "textStyle": text_style,
+                            "fields": fields_mask,
+                        }
+                    }))
+                # nesting_level override via paragraph style
+                if nesting_override is not None:
+                    indent = nesting_override * 36  # 36pt per nesting level (Google Docs default)
+                    pending.append((insert_index, {
+                        "updateParagraphStyle": {
+                            "range": {
+                                "startIndex": insert_index,
+                                "endIndex": insert_index + len(insert_text),
+                            },
+                            "paragraphStyle": {
+                                "indentStart": {"magnitude": indent, "unit": "PT"},
+                                "indentFirstLine": {"magnitude": indent, "unit": "PT"},
+                            },
+                            "fields": "indentStart,indentFirstLine",
+                        }
+                    }))
+                results.append({
+                    "action": "insert_paragraph",
+                    "after_paragraph_index": para_idx,
+                    "status": "applied",
+                    "characters_inserted": len(insert_text),
+                })
+            continue
+
         # --- Text-matching actions ----------------------------------------
         find_text = op["find_text"]
         mm = op.get("match_mode", "exact")
