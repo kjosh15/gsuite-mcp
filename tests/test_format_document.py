@@ -1108,6 +1108,22 @@ async def test_insert_paragraph_invalid_text_style():
 
 
 @pytest.mark.asyncio
+async def test_insert_paragraph_invalid_nesting_level():
+    svc = _mock_docs_service(_make_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph", "after_paragraph_index": 0,
+         "text": "x", "nesting_level": "abc"},
+    ])
+    assert result["error"] == "INVALID_NESTING_LEVEL"
+
+    result2 = await format_document(svc, "f1", [
+        {"action": "insert_paragraph", "after_paragraph_index": 0,
+         "text": "x", "nesting_level": -1},
+    ])
+    assert result2["error"] == "INVALID_NESTING_LEVEL"
+
+
+@pytest.mark.asyncio
 async def test_insert_paragraph_preview():
     doc = _make_doc(
         (0, 14, "Introduction\n", "HEADING_1"),

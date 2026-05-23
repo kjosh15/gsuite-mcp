@@ -918,6 +918,13 @@ async def format_document(
                         "retryable": False,
                         "message": f"Operation {i}: {err}",
                     }
+            nl = op.get("nesting_level")
+            if nl is not None and (not isinstance(nl, int) or nl < 0):
+                return {
+                    "error": "INVALID_NESTING_LEVEL",
+                    "retryable": False,
+                    "message": f"Operation {i}: 'nesting_level' must be a non-negative integer.",
+                }
         else:
             find_text = op.get("find_text", "")
             if not isinstance(find_text, str) or not find_text.strip():
