@@ -1197,6 +1197,21 @@ async def test_insert_after_match_multi_match_error():
 
 
 @pytest.mark.asyncio
+async def test_insert_after_match_multi_match_ignores_match_all():
+    """match_all=True is still rejected for insert_paragraph_after_match."""
+    doc = _make_doc(
+        (0, 10, "Duplicate\n", "NORMAL_TEXT"),
+        (10, 20, "Duplicate\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "insert_paragraph_after_match", "find_text": "Duplicate",
+         "text": "x", "match_all": True},
+    ])
+    assert result["results"][0]["status"] == "multi_match_error"
+
+
+@pytest.mark.asyncio
 async def test_insert_after_match_with_text_style():
     doc = _make_doc(
         (0, 14, "Introduction\n", "HEADING_1"),
