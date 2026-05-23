@@ -1005,8 +1005,10 @@ async def test_insert_paragraph_with_text_style():
     requests = call_args.kwargs["body"]["requests"]
     # insertText + updateTextStyle
     assert len(requests) == 2
-    assert "insertText" in requests[1]  # sorted descending: style at index 14 first, insert at 14
-    style_req = requests[0]["updateTextStyle"]
+    # Both requests share the same sort key (insert_index=14);
+    # stable sort preserves insertion order: insertText first, updateTextStyle second.
+    assert "insertText" in requests[0]
+    style_req = requests[1]["updateTextStyle"]
     assert style_req["textStyle"]["italic"] is True
     assert style_req["fields"] == "italic"
 
