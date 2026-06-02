@@ -308,3 +308,147 @@ async def test_gdoc_ops_batch_replace_aborted_skips_after_revision():
     assert result["committed"] is False
     assert result["revision_id_before"] == "rev_before"
     assert "revision_id_after" not in result
+
+
+# ---- server.gdoc_batch_replace tool tests ----
+
+
+@pytest.fixture
+def mock_services():
+    with patch("gsuite_mcp.auth.get_drive_service") as mock_drive, \
+         patch("gsuite_mcp.auth.get_docs_service") as mock_docs:
+        drive = MagicMock()
+        docs = MagicMock()
+        mock_drive.return_value = drive
+        mock_docs.return_value = docs
+        yield {"drive": drive, "docs": docs}
+
+
+@pytest.mark.asyncio
+async def test_tool_trashed_file_refused(mock_services):
+    drive = mock_services["drive"]
+    drive.files().get.return_value.execute.return_value = {
+        "name": "Doc", "mimeType": "application/vnd.google-apps.document",
+        "trashed": True, "trashedTime": "2026-01-01T00:00:00Z",
+    }
+
+    from gsuite_mcp.server import gdoc_batch_replace
+    result = await gdoc_batch_replace(
+        file_id="f1",
+        edits=[{"find_text": "a", "replace_text": "b"}],
+    )
+    assert result["error"] == "TRASHED_FILE"
+
+
+@pytest.mark.asyncio
+async def test_tool_not_a_google_doc(mock_services):
+    drive = mock_services["drive"]
+    drive.files().get.return_value.execute.return_value = {
+        "name": "file.docx",
+        "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    }
+
+    from gsuite_mcp.server import gdoc_batch_replace
+    result = await gdoc_batch_replace(
+        file_id="f1",
+        edits=[{"find_text": "a", "replace_text": "b"}],
+    )
+    assert result["error"] == "NOT_A_GOOGLE_DOC"
+
+
+@pytest.mark.asyncio
+async def test_tool_review_doc_blocked(mock_services):
+    drive = mock_services["drive"]
+    drive.files().get.return_value.execute.return_value = {
+        "name": "Career Strategy",
+        "mimeType": "application/vnd.google-apps.document",
+    }
+
+    with patch.dict("os.environ", {"GDOC_REVIEW_DOC_IDS": "review1,review2,review3"}):
+        from gsuite_mcp.server import gdoc_batch_replace
+        result = await gdoc_batch_replace(
+            file_id="review2",
+            edits=[{"find_text": "a", "replace_text": "b"}],
+        )
+    assert result["error"] == "REVIEW_DOC_BLOCKED"
+
+
+@pytest.mark.asyncio
+async def test_tool_review_doc_allowed_with_flag(mock_services):
+    drive = mock_services["drive"]
+    docs = mock_services["docs"]
+    drive.files().get.return_value.execute.return_value = {
+        "name": "Career Strategy",
+        "mimeType": "application/vnd.google-apps.document",
+    }
+    doc = _make_doc("Hello world")
+    docs.documents().get.return_value.execute.return_value = doc
+    docs.documents().batchUpdate.return_value.execute.return_value = {"replies": []}
+    drive.revisions().list.return_value.execute.return_value = {
+        "revisions": [{"id": "r1"}]
+    }
+
+    with patch.dict("os.environ", {"GDOC_REVIEW_DOC_IDS": "review1,review2"}):
+        from gsuite_mcp.server import gdoc_batch_replace
+        result = await gdoc_batch_replace(
+            file_id="review1",
+            edits=[{"find_text": "Hello", "replace_text": "Hi"}],
+            allow_review_docs=True,
+        )
+    assert result["committed"] is True
+
+
+@pytest.mark.asyncio
+async def test_tool_empty_edits_rejected(mock_services):
+    drive = mock_services["drive"]
+    drive.files().get.return_value.execute.return_value = {
+        "name": "Doc",
+        "mimeType": "application/vnd.google-apps.document",
+    }
+
+    from gsuite_mcp.server import gdoc_batch_replace
+    result = await gdoc_batch_replace(file_id="f1", edits=[])
+    assert result["error"] == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
+async def test_tool_missing_fields_rejected(mock_services):
+    drive = mock_services["drive"]
+    drive.files().get.return_value.execute.return_value = {
+        "name": "Doc",
+        "mimeType": "application/vnd.google-apps.document",
+    }
+
+    from gsuite_mcp.server import gdoc_batch_replace
+    result = await gdoc_batch_replace(
+        file_id="f1",
+        edits=[{"find_text": "a"}],  # missing replace_text
+    )
+    assert result["error"] == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
+async def test_tool_happy_path_with_modified_time(mock_services):
+    """Full integration: tool returns file_id, committed, modified_time."""
+    drive = mock_services["drive"]
+    docs = mock_services["docs"]
+    drive.files().get.return_value.execute.return_value = {
+        "name": "Doc",
+        "mimeType": "application/vnd.google-apps.document",
+        "modifiedTime": "2026-06-01T00:00:00Z",
+    }
+    doc = _make_doc("Hello world")
+    docs.documents().get.return_value.execute.return_value = doc
+    docs.documents().batchUpdate.return_value.execute.return_value = {"replies": []}
+    drive.revisions().list.return_value.execute.return_value = {
+        "revisions": [{"id": "r1"}]
+    }
+
+    from gsuite_mcp.server import gdoc_batch_replace
+    result = await gdoc_batch_replace(
+        file_id="f1",
+        edits=[{"find_text": "Hello", "replace_text": "Hi"}],
+    )
+    assert result["file_id"] == "f1"
+    assert result["committed"] is True
+    assert "modified_time" in result
