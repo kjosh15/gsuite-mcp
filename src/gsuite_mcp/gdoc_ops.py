@@ -186,3 +186,44 @@ async def suggest_edit(
             "Open it to review the suggestions. The original Google Doc is unchanged."
         ),
     }
+
+
+async def batch_replace(
+    drive_service,
+    docs_service,
+    file_id: str,
+    edits: list[dict],
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Batch find/replace with Drive revision ID anchors.
+
+    Wraps docs_ops.batch_replace, adding revision_id_before (always)
+    and revision_id_after (only when committed) from Drive revisions.list.
+    """
+    from gsuite_mcp import docs_ops
+
+    # Fetch latest Drive revision ID before mutation
+    rev_resp = await asyncio.to_thread(
+        lambda: drive_service.revisions()
+        .list(fileId=file_id, fields="revisions(id)", pageSize=1000)
+        .execute()
+    )
+    revisions = rev_resp.get("revisions", [])
+    revision_id_before = revisions[-1]["id"] if revisions else None
+
+    result = await docs_ops.batch_replace(
+        docs_service, file_id, edits, dry_run=dry_run,
+    )
+
+    result["revision_id_before"] = revision_id_before
+
+    if result.get("committed"):
+        rev_resp_after = await asyncio.to_thread(
+            lambda: drive_service.revisions()
+            .list(fileId=file_id, fields="revisions(id)", pageSize=1000)
+            .execute()
+        )
+        revisions_after = rev_resp_after.get("revisions", [])
+        result["revision_id_after"] = revisions_after[-1]["id"] if revisions_after else None
+
+    return result
