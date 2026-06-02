@@ -219,3 +219,92 @@ async def test_batch_replace_reverse_order_requests():
     first_delete = requests[0]["deleteContentRange"]["range"]
     second_delete = requests[2]["deleteContentRange"]["range"]
     assert first_delete["startIndex"] > second_delete["startIndex"]
+
+
+# ---- gdoc_ops.batch_replace wrapper tests ----
+
+
+@pytest.mark.asyncio
+async def test_gdoc_ops_batch_replace_includes_revision_ids():
+    """Wrapper enriches result with Drive revision IDs."""
+    drive = MagicMock()
+    docs = MagicMock()
+
+    doc = _make_doc("Hello world")
+    docs.documents().get.return_value.execute.return_value = doc
+    docs.documents().batchUpdate.return_value.execute.return_value = {"replies": []}
+
+    # Mock revisions.list — called twice (before and after)
+    revisions_mock = MagicMock()
+    call_count = 0
+
+    def revisions_execute():
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return {"revisions": [{"id": "rev_before"}]}
+        return {"revisions": [{"id": "rev_after"}]}
+
+    revisions_mock.execute = revisions_execute
+    drive.revisions().list.return_value = revisions_mock
+
+    from gsuite_mcp.gdoc_ops import batch_replace
+    result = await batch_replace(
+        drive, docs, "file1",
+        edits=[{"find_text": "Hello", "replace_text": "Hi"}],
+    )
+
+    assert result["committed"] is True
+    assert result["revision_id_before"] == "rev_before"
+    assert result["revision_id_after"] == "rev_after"
+
+
+@pytest.mark.asyncio
+async def test_gdoc_ops_batch_replace_dry_run_skips_after_revision():
+    """Dry run fetches before revision but not after."""
+    drive = MagicMock()
+    docs = MagicMock()
+
+    doc = _make_doc("Hello world")
+    docs.documents().get.return_value.execute.return_value = doc
+
+    drive.revisions().list.return_value.execute.return_value = {
+        "revisions": [{"id": "rev_before"}]
+    }
+
+    from gsuite_mcp.gdoc_ops import batch_replace
+    result = await batch_replace(
+        drive, docs, "file1",
+        edits=[{"find_text": "Hello", "replace_text": "Hi"}],
+        dry_run=True,
+    )
+
+    assert result["committed"] is False
+    assert result["revision_id_before"] == "rev_before"
+    assert "revision_id_after" not in result
+    # revisions.list called only once
+    assert drive.revisions().list.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_gdoc_ops_batch_replace_aborted_skips_after_revision():
+    """Count mismatch abort fetches before revision but not after."""
+    drive = MagicMock()
+    docs = MagicMock()
+
+    doc = _make_doc("Hello Hello Hello")
+    docs.documents().get.return_value.execute.return_value = doc
+
+    drive.revisions().list.return_value.execute.return_value = {
+        "revisions": [{"id": "rev_before"}]
+    }
+
+    from gsuite_mcp.gdoc_ops import batch_replace
+    result = await batch_replace(
+        drive, docs, "file1",
+        edits=[{"find_text": "Hello", "replace_text": "Hi", "expected_count": 1}],
+    )
+
+    assert result["committed"] is False
+    assert result["revision_id_before"] == "rev_before"
+    assert "revision_id_after" not in result
