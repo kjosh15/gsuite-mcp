@@ -692,6 +692,105 @@ async def gdoc_suggest_edit(
 
 
 @mcp.tool()
+async def gdoc_batch_replace(
+    file_id: str,
+    edits: list[dict[str, Any]],
+    dry_run: bool = False,
+    allow_review_docs: bool = False,
+) -> dict[str, Any]:
+    """Batch find/replace in a live Google Doc, in place.
+
+    Accepts an array of find/replace pairs applied atomically in one
+    batchUpdate. Supports cross-paragraph matches. Preserves file ID.
+
+    Each edit: {find_text: str, replace_text: str, expected_count?: int}.
+    If any pair's expected_count doesn't match, the entire batch aborts.
+
+    dry_run=True returns per-pair match counts without writing.
+    allow_review_docs=False (default) blocks edits to hand-review docs
+    listed in the GDOC_REVIEW_DOC_IDS env var.
+
+    Returns revision_id_before/after (Drive revision IDs) for rollback.
+    Refuses trashed files with error: TRASHED_FILE."""
+    drive = auth.get_drive_service()
+    meta = await asyncio.to_thread(
+        lambda: drive.files()
+        .get(fileId=file_id, fields="name,mimeType,modifiedTime,trashed,trashedTime")
+        .execute()
+    )
+    if meta.get("trashed"):
+        return _trashed_error(file_id, meta)
+    if meta.get("mimeType") != GOOGLE_DOC_MIME:
+        return {
+            "error": "NOT_A_GOOGLE_DOC",
+            "retryable": False,
+            "message": (
+                f"gdoc_batch_replace only works on Google Docs. This file is "
+                f"{meta.get('mimeType')}."
+            ),
+        }
+
+    # Denylist guard
+    review_ids_raw = os.environ.get("GDOC_REVIEW_DOC_IDS", "")
+    review_ids = {rid.strip() for rid in review_ids_raw.split(",") if rid.strip()}
+    if file_id in review_ids and not allow_review_docs:
+        return {
+            "error": "REVIEW_DOC_BLOCKED",
+            "retryable": False,
+            "file_id": file_id,
+            "file_name": meta.get("name", ""),
+            "message": (
+                "This document is in the hand-review denylist "
+                "(GDOC_REVIEW_DOC_IDS). Use gdoc_suggest_edit for review "
+                "docs, or pass allow_review_docs=True to override."
+            ),
+        }
+
+    # Validate edits
+    if not edits:
+        return {
+            "error": "INVALID_INPUT",
+            "retryable": False,
+            "message": "edits array must not be empty.",
+        }
+    for i, edit in enumerate(edits):
+        if "find_text" not in edit or "replace_text" not in edit:
+            return {
+                "error": "INVALID_INPUT",
+                "retryable": False,
+                "message": (
+                    f"Edit at index {i} missing required field(s). "
+                    f"Each edit must have 'find_text' and 'replace_text'."
+                ),
+            }
+
+    docs = auth.get_docs_service()
+    try:
+        result = await gdoc_ops.batch_replace(
+            drive, docs, file_id, edits, dry_run=dry_run,
+        )
+        result["file_id"] = file_id
+        if result.get("committed"):
+            meta2 = await asyncio.to_thread(
+                lambda: drive.files()
+                .get(fileId=file_id, fields="modifiedTime")
+                .execute()
+            )
+            result["modified_time"] = meta2.get("modifiedTime", "")
+        return result
+    except HttpError as exc:
+        status = exc.resp.status if exc.resp else 0
+        return {
+            "error": "GOOGLE_API_ERROR",
+            "retryable": status in TRANSIENT_CODES,
+            "http_status": status,
+            "message": (
+                f"Google Docs API error (HTTP {status}) after retries: {exc}"
+            ),
+        }
+
+
+@mcp.tool()
 async def trash_file(file_id: str) -> dict[str, Any]:
     """Move a file to Drive trash. Reversible within 30 days via untrash_file."""
     try:
