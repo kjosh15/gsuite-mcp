@@ -1415,3 +1415,137 @@ async def format_document(
         "operations_applied": applied,
         "results": results,
     }
+
+
+# ---------------------------------------------------------------------------
+# Batch replace
+# ---------------------------------------------------------------------------
+
+
+async def batch_replace(
+    docs_service,
+    file_id: str,
+    edits: list[dict],
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Batch find/replace across a Google Doc using client-side matching.
+
+    Supports cross-paragraph matches. All pairs are applied in a single
+    batchUpdate for atomicity. Match regions must not overlap across pairs.
+
+    Each edit dict must have ``find_text`` and ``replace_text``.
+    Optional ``expected_count`` aborts the entire batch on mismatch.
+    """
+    doc = await asyncio.to_thread(
+        lambda: docs_service.documents()
+        .get(documentId=file_id)
+        .execute()
+    )
+    flat, index_map = _flatten_doc_text(doc)
+
+    # Phase 1: find all matches for every pair
+    all_pair_matches: list[list[tuple[int, int]]] = []
+    results: list[dict[str, Any]] = []
+    has_count_mismatch = False
+
+    for edit in edits:
+        find_text = edit["find_text"]
+        replace_text = edit["replace_text"]
+        expected_count = edit.get("expected_count")
+
+        matches = _find_all_substring(flat, find_text, match_case=True)
+        status = "ok"
+
+        if expected_count is not None and len(matches) != expected_count:
+            status = "count_mismatch"
+            has_count_mismatch = True
+
+        results.append({
+            "find_text": find_text,
+            "matches_found": len(matches),
+            "expected_count": expected_count,
+            "status": status,
+        })
+        all_pair_matches.append(matches)
+
+    # Abort on any count mismatch
+    if has_count_mismatch:
+        return {
+            "results": results,
+            "committed": False,
+            "total_replacements": 0,
+        }
+
+    # Phase 2: check for overlapping match regions across pairs
+    all_regions: list[tuple[int, int, int]] = []  # (start, end, pair_index)
+    for pair_idx, matches in enumerate(all_pair_matches):
+        for start, end in matches:
+            all_regions.append((start, end, pair_idx))
+    all_regions.sort()
+
+    for i in range(len(all_regions) - 1):
+        _, end_a, pair_a = all_regions[i]
+        start_b, _, pair_b = all_regions[i + 1]
+        if pair_a != pair_b and end_a > start_b:
+            return {
+                "error": "OVERLAPPING_MATCHES",
+                "retryable": False,
+                "message": (
+                    f"Match regions overlap between pair {pair_a} "
+                    f"({edits[pair_a]['find_text']!r}) and pair {pair_b} "
+                    f"({edits[pair_b]['find_text']!r}). "
+                    f"Split into separate calls."
+                ),
+                "results": results,
+                "committed": False,
+                "total_replacements": 0,
+            }
+
+    # Count total replacements
+    total = sum(len(m) for m in all_pair_matches)
+
+    if dry_run or total == 0:
+        return {
+            "results": results,
+            "committed": False,
+            "total_replacements": total if not dry_run else 0,
+            "dry_run": dry_run,
+        }
+
+    # Phase 3: build requests in reverse document order
+    ops: list[tuple[int, int, str]] = []
+    for pair_idx, matches in enumerate(all_pair_matches):
+        replace_text = edits[pair_idx]["replace_text"]
+        for m_start, m_end in matches:
+            abs_start = index_map[m_start]
+            abs_end = index_map[m_end - 1] + 1
+            ops.append((abs_start, abs_end, replace_text))
+
+    # Sort by start position descending (reverse doc order)
+    ops.sort(key=lambda x: x[0], reverse=True)
+
+    requests: list[dict] = []
+    for abs_start, abs_end, replacement in ops:
+        requests.append({
+            "deleteContentRange": {
+                "range": {"startIndex": abs_start, "endIndex": abs_end}
+            }
+        })
+        requests.append({
+            "insertText": {
+                "location": {"index": abs_start},
+                "text": replacement,
+            }
+        })
+
+    await retry_transient(
+        lambda: docs_service.documents()
+        .batchUpdate(documentId=file_id, body={"requests": requests})
+        .execute()
+    )
+
+    return {
+        "results": results,
+        "committed": True,
+        "total_replacements": total,
+    }
