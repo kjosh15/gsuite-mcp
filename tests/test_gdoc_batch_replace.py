@@ -1,6 +1,6 @@
 """Tests for gdoc_batch_replace tool."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 import pytest
 
 
