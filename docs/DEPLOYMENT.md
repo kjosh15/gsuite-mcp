@@ -287,10 +287,11 @@ uv sync --all-extras
 uv run pytest -q              # 241 tests
 uv run ruff check .
 
-# Run the server locally (requires all 4 env vars)
+# Run the server locally (requires all 4 env vars + denylist)
 GDRIVE_MCP_API_KEY=$(gcloud secrets versions access latest --secret=gdrive-mcp-api-key --project=gdrive-mcp-492818) \
 GOOGLE_OAUTH_CLIENT_ID=$(gcloud secrets versions access latest --secret=gdrive-oauth-client-id --project=gdrive-mcp-492818) \
 GOOGLE_OAUTH_CLIENT_SECRET=$(gcloud secrets versions access latest --secret=gdrive-oauth-client-secret --project=gdrive-mcp-492818) \
 GOOGLE_OAUTH_REFRESH_TOKEN=$(gcloud secrets versions access latest --secret=gdrive-oauth-refresh-token --project=gdrive-mcp-492818) \
+GDOC_REVIEW_DOC_IDS='1UbTGtPbaY2OZhu0d3JuXeO_FXMqIb2gUjSgC2u5lV8o,1LZSvG9hkAbwdmYZzOKDEhwvHzTgdYZJDjjkK-HZ1Ytc,1XnaAWOjjy_QIL1TS9k5BZu3V15SLIvQqCCrRw3qOKLE' \
   uv run python -m gsuite_mcp
 ```
