@@ -83,5 +83,5 @@ Optional:
 - `gdoc_batch_replace` requires `GDOC_REVIEW_DOC_IDS` to be set — fails-closed with `DENYLIST_NOT_CONFIGURED` if unset or empty. This is the safety guarantee for in-place edits: hand-review docs are walled off by the denylist.
 
 ## Session Tracking
-Total Claude sessions: 15
-Last session: 2026-06-03 08:57:22
+Total Claude sessions: 16
+Last session: 2026-06-03
