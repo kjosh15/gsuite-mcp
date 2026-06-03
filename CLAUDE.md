@@ -79,7 +79,7 @@ Optional:
 - Gmail scopes: `gmail.compose` + `gmail.readonly` (narrowest for drafts). Users must re-run `auth_setup` after upgrade to grant Gmail scopes.
 - Mutation tools refuse trashed files with `error: TRASHED_FILE`. Use `untrash_file` to restore first.
 - Read tools return `trashed: true` with `trashed_time` for files in Drive trash.
-- `gdoc_batch_replace` uses client-side matching with `deleteContentRange`+`insertText` (not `replaceAllText`), so cross-paragraph find/replace works. Always case-sensitive.
+- `gdoc_batch_replace` uses client-side matching with `deleteContentRange`+`insertText` (not `replaceAllText`), so cross-paragraph find/replace works. Always case-sensitive. Pure deletions (`replace_text=""`) emit only `deleteContentRange` (no empty `insertText`).
 - `gdoc_batch_replace` requires `GDOC_REVIEW_DOC_IDS` to be set — fails-closed with `DENYLIST_NOT_CONFIGURED` if unset or empty. This is the safety guarantee for in-place edits: hand-review docs are walled off by the denylist.
 
 ## Session Tracking
