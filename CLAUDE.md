@@ -80,5 +80,5 @@ Optional:
 - `gdoc_batch_replace` uses client-side matching with `deleteContentRange`+`insertText` (not `replaceAllText`), so cross-paragraph find/replace works. Always case-sensitive.
 
 ## Session Tracking
-Total Claude sessions: 14
-Last session: 2026-05-23 11:32:25
+Total Claude sessions: 15
+Last session: 2026-06-03
