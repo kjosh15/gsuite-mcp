@@ -192,7 +192,7 @@ curl -s -X POST "$URL" \
   | python3 -c "import sys, json; r=json.loads(sys.stdin.read()); print(len(r['result']['tools']), 'tools')"
 ```
 
-Expected output of (3): `17 tools`.
+Expected output of (3): `18 tools`.
 
 ## Connecting an MCP client
 
