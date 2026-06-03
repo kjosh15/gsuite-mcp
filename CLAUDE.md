@@ -66,6 +66,7 @@ Required:
 Optional:
 - `GSUITE_MCP_API_KEY` — shared secret for the bearer-token middleware (also accepts `GDRIVE_MCP_API_KEY` for backward compatibility)
 - `PORT` — HTTP port for the FastMCP server (default 8080)
+- `GDOC_REVIEW_DOC_IDS` — comma-separated file IDs for hand-review docs that `gdoc_batch_replace` will refuse without `allow_review_docs=True`
 
 ## Key Constraints
 
