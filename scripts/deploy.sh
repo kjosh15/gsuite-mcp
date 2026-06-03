@@ -24,7 +24,7 @@ gcloud run deploy "$SERVICE" \
   --image="$IMAGE" \
   --region="$REGION" \
   --project="$PROJECT" \
-  --update-env-vars="GDOC_REVIEW_DOC_IDS=${GDOC_REVIEW_DOC_IDS:?GDOC_REVIEW_DOC_IDS must be set}" \
+  --update-env-vars="^;^GDOC_REVIEW_DOC_IDS=${GDOC_REVIEW_DOC_IDS:?GDOC_REVIEW_DOC_IDS must be set}" \
   --quiet
 
 echo "==> Deployed. Running smoke test..."
