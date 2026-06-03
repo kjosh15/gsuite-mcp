@@ -399,6 +399,61 @@ async def test_tool_review_doc_allowed_with_flag(mock_services):
 
 
 @pytest.mark.asyncio
+async def test_tool_review_doc_blocked_on_dry_run(mock_services):
+    """Denylist guard fires on dry_run too, not just commit path."""
+    drive = mock_services["drive"]
+    drive.files().get.return_value.execute.return_value = {
+        "name": "Career Strategy",
+        "mimeType": "application/vnd.google-apps.document",
+    }
+
+    with patch.dict("os.environ", {"GDOC_REVIEW_DOC_IDS": "review1,review2"}):
+        from gsuite_mcp.server import gdoc_batch_replace
+        result = await gdoc_batch_replace(
+            file_id="review1",
+            edits=[{"find_text": "a", "replace_text": "b"}],
+            dry_run=True,
+        )
+    assert result["error"] == "REVIEW_DOC_BLOCKED"
+
+
+@pytest.mark.asyncio
+async def test_tool_refuses_when_denylist_env_unset(mock_services):
+    """gdoc_batch_replace must fail-closed when GDOC_REVIEW_DOC_IDS is not set."""
+    drive = mock_services["drive"]
+    drive.files().get.return_value.execute.return_value = {
+        "name": "Doc",
+        "mimeType": "application/vnd.google-apps.document",
+    }
+
+    with patch.dict("os.environ", {}, clear=True):
+        from gsuite_mcp.server import gdoc_batch_replace
+        result = await gdoc_batch_replace(
+            file_id="f1",
+            edits=[{"find_text": "a", "replace_text": "b"}],
+        )
+    assert result["error"] == "DENYLIST_NOT_CONFIGURED"
+
+
+@pytest.mark.asyncio
+async def test_tool_refuses_when_denylist_env_empty(mock_services):
+    """Empty GDOC_REVIEW_DOC_IDS is as dangerous as unset — refuse."""
+    drive = mock_services["drive"]
+    drive.files().get.return_value.execute.return_value = {
+        "name": "Doc",
+        "mimeType": "application/vnd.google-apps.document",
+    }
+
+    with patch.dict("os.environ", {"GDOC_REVIEW_DOC_IDS": ""}):
+        from gsuite_mcp.server import gdoc_batch_replace
+        result = await gdoc_batch_replace(
+            file_id="f1",
+            edits=[{"find_text": "a", "replace_text": "b"}],
+        )
+    assert result["error"] == "DENYLIST_NOT_CONFIGURED"
+
+
+@pytest.mark.asyncio
 async def test_tool_empty_edits_rejected(mock_services):
     drive = mock_services["drive"]
     drive.files().get.return_value.execute.return_value = {
