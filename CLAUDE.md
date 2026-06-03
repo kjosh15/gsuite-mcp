@@ -63,10 +63,12 @@ Required:
 - `GOOGLE_OAUTH_CLIENT_SECRET` — OAuth 2.0 client secret
 - `GOOGLE_OAUTH_REFRESH_TOKEN` — long-lived refresh token (generate via `auth_setup`)
 
+Required for `gdoc_batch_replace`:
+- `GDOC_REVIEW_DOC_IDS` — comma-separated file IDs for hand-review docs. `gdoc_batch_replace` **fails-closed** if this is unset or empty (returns `DENYLIST_NOT_CONFIGURED`). Docs in the list are refused unless `allow_review_docs=True`.
+
 Optional:
 - `GSUITE_MCP_API_KEY` — shared secret for the bearer-token middleware (also accepts `GDRIVE_MCP_API_KEY` for backward compatibility)
 - `PORT` — HTTP port for the FastMCP server (default 8080)
-- `GDOC_REVIEW_DOC_IDS` — comma-separated file IDs for hand-review docs that `gdoc_batch_replace` will refuse without `allow_review_docs=True`
 
 ## Key Constraints
 
