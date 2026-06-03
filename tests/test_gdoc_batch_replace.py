@@ -484,6 +484,120 @@ async def test_tool_missing_fields_rejected(mock_services):
     assert result["error"] == "INVALID_INPUT"
 
 
+# ---- pure-deletion tests (replace_text="") ----
+
+
+@pytest.mark.asyncio
+async def test_pure_deletion_single_pair():
+    """One pair, replace_text='', matched once; commit succeeds, text gone."""
+    docs = MagicMock()
+    doc = _make_doc("Keep this", "Delete this line", "Keep this too")
+    docs.documents().get.return_value.execute.return_value = doc
+    docs.documents().batchUpdate.return_value.execute.return_value = {"replies": []}
+
+    from gsuite_mcp.docs_ops import batch_replace
+    result = await batch_replace(
+        docs, "file1",
+        edits=[{"find_text": "Delete this line", "replace_text": ""}],
+    )
+
+    assert result["committed"] is True
+    assert result["total_replacements"] == 1
+    assert result["results"][0]["matches_found"] == 1
+
+    # Verify batchUpdate was called and contains only a deleteContentRange
+    # (no insertText with empty string)
+    call_args = docs.documents().batchUpdate.call_args
+    requests = call_args.kwargs["body"]["requests"]
+    assert len(requests) == 1  # just one delete, no insert
+    assert "deleteContentRange" in requests[0]
+    for req in requests:
+        assert "insertText" not in req
+
+
+@pytest.mark.asyncio
+async def test_pure_deletion_in_mixed_batch():
+    """Batch with one normal replace + one empty-replace deletion; both commit."""
+    docs = MagicMock()
+    doc = _make_doc("Hello world", "Remove me", "Goodbye world")
+    docs.documents().get.return_value.execute.return_value = doc
+    docs.documents().batchUpdate.return_value.execute.return_value = {"replies": []}
+
+    from gsuite_mcp.docs_ops import batch_replace
+    result = await batch_replace(
+        docs, "file1",
+        edits=[
+            {"find_text": "Hello", "replace_text": "Hi"},
+            {"find_text": "Remove me", "replace_text": ""},
+        ],
+    )
+
+    assert result["committed"] is True
+    assert result["total_replacements"] == 2
+    assert result["results"][0]["matches_found"] == 1
+    assert result["results"][1]["matches_found"] == 1
+
+    # Verify requests: deletion pair has 1 request (delete only),
+    # replacement pair has 2 (delete + insert)
+    call_args = docs.documents().batchUpdate.call_args
+    requests = call_args.kwargs["body"]["requests"]
+    assert len(requests) == 3  # 2 for replace (delete+insert) + 1 for deletion (delete only)
+    # No insertText should have empty text
+    for req in requests:
+        if "insertText" in req:
+            assert req["insertText"]["text"] != ""
+
+
+@pytest.mark.asyncio
+async def test_deletion_dry_run_matches_commit():
+    """Dry-run result for an empty-replace pair must match what commit does."""
+    docs = MagicMock()
+    doc = _make_doc("Hello world", "Delete this line")
+    docs.documents().get.return_value.execute.return_value = doc
+
+    from gsuite_mcp.docs_ops import batch_replace
+
+    # Dry-run should succeed (not error)
+    dry_result = await batch_replace(
+        docs, "file1",
+        edits=[{"find_text": "Delete this line", "replace_text": ""}],
+        dry_run=True,
+    )
+
+    assert dry_result["committed"] is False
+    assert dry_result["results"][0]["matches_found"] == 1
+    assert dry_result["results"][0]["status"] == "ok"
+
+    # Commit should also succeed
+    docs.documents().batchUpdate.return_value.execute.return_value = {"replies": []}
+    commit_result = await batch_replace(
+        docs, "file1",
+        edits=[{"find_text": "Delete this line", "replace_text": ""}],
+    )
+    assert commit_result["committed"] is True
+
+
+@pytest.mark.asyncio
+async def test_deletion_preserves_overlap_guard():
+    """A deletion pair whose span overlaps another pair still aborts."""
+    docs = MagicMock()
+    doc = _make_doc("Hello world friend")
+    docs.documents().get.return_value.execute.return_value = doc
+
+    from gsuite_mcp.docs_ops import batch_replace
+    result = await batch_replace(
+        docs, "file1",
+        edits=[
+            {"find_text": "Hello world", "replace_text": ""},  # deletion
+            {"find_text": "world", "replace_text": "earth"},   # overlaps
+        ],
+    )
+
+    assert result["committed"] is False
+    assert result["error"] == "OVERLAPPING_MATCHES"
+    docs.documents().batchUpdate.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_tool_happy_path_with_modified_time(mock_services):
     """Full integration: tool returns file_id, committed, modified_time."""
