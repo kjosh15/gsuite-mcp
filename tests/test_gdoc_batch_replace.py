@@ -461,8 +461,9 @@ async def test_tool_empty_edits_rejected(mock_services):
         "mimeType": "application/vnd.google-apps.document",
     }
 
-    from gsuite_mcp.server import gdoc_batch_replace
-    result = await gdoc_batch_replace(file_id="f1", edits=[])
+    with patch.dict("os.environ", {"GDOC_REVIEW_DOC_IDS": "protected1"}):
+        from gsuite_mcp.server import gdoc_batch_replace
+        result = await gdoc_batch_replace(file_id="f1", edits=[])
     assert result["error"] == "INVALID_INPUT"
 
 
@@ -474,11 +475,12 @@ async def test_tool_missing_fields_rejected(mock_services):
         "mimeType": "application/vnd.google-apps.document",
     }
 
-    from gsuite_mcp.server import gdoc_batch_replace
-    result = await gdoc_batch_replace(
-        file_id="f1",
-        edits=[{"find_text": "a"}],  # missing replace_text
-    )
+    with patch.dict("os.environ", {"GDOC_REVIEW_DOC_IDS": "protected1"}):
+        from gsuite_mcp.server import gdoc_batch_replace
+        result = await gdoc_batch_replace(
+            file_id="f1",
+            edits=[{"find_text": "a"}],  # missing replace_text
+        )
     assert result["error"] == "INVALID_INPUT"
 
 
@@ -499,11 +501,12 @@ async def test_tool_happy_path_with_modified_time(mock_services):
         "revisions": [{"id": "r1"}]
     }
 
-    from gsuite_mcp.server import gdoc_batch_replace
-    result = await gdoc_batch_replace(
-        file_id="f1",
-        edits=[{"find_text": "Hello", "replace_text": "Hi"}],
-    )
+    with patch.dict("os.environ", {"GDOC_REVIEW_DOC_IDS": "protected1"}):
+        from gsuite_mcp.server import gdoc_batch_replace
+        result = await gdoc_batch_replace(
+            file_id="f1",
+            edits=[{"find_text": "Hello", "replace_text": "Hi"}],
+        )
     assert result["file_id"] == "f1"
     assert result["committed"] is True
     assert "modified_time" in result
