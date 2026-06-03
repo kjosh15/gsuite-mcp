@@ -57,6 +57,21 @@ All four are in project `gdrive-mcp-492818` with automatic replication. The runt
 
 The legacy `gdrive-sa` service-account secret is **kept** for rollback only — it is no longer mounted by the current revision.
 
+## Plain environment variables
+
+These are set directly on the Cloud Run service (not via Secret Manager):
+
+| Env var                  | Purpose                                                                 |
+| ------------------------ | ----------------------------------------------------------------------- |
+| `GDOC_REVIEW_DOC_IDS`   | Comma-separated file IDs for hand-review docs that `gdoc_batch_replace` will refuse without `allow_review_docs=True`. **Required** — the tool fails-closed if unset or empty. |
+
+Set/update via:
+```bash
+gcloud run services update gdrive-mcp \
+  --region=us-central1 --project=gdrive-mcp-492818 \
+  --update-env-vars='GDOC_REVIEW_DOC_IDS=<id1>,<id2>,<id3>'
+```
+
 ## Initial deployment (already done — for reference)
 
 ```bash
