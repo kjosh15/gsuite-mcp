@@ -65,11 +65,11 @@ These are set directly on the Cloud Run service (not via Secret Manager):
 | ------------------------ | ----------------------------------------------------------------------- |
 | `GDOC_REVIEW_DOC_IDS`   | Comma-separated file IDs for hand-review docs that `gdoc_batch_replace` will refuse without `allow_review_docs=True`. **Required** — the tool fails-closed if unset or empty. |
 
-Set/update via:
+Set/update via (use `^;^` delimiter because the value contains commas):
 ```bash
 gcloud run services update gdrive-mcp \
   --region=us-central1 --project=gdrive-mcp-492818 \
-  --update-env-vars='GDOC_REVIEW_DOC_IDS=<id1>,<id2>,<id3>'
+  --update-env-vars='^;^GDOC_REVIEW_DOC_IDS=<id1>,<id2>,<id3>'
 ```
 
 ## Initial deployment (already done — for reference)
