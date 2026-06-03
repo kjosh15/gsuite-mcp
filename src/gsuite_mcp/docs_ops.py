@@ -1531,12 +1531,13 @@ async def batch_replace(
                 "range": {"startIndex": abs_start, "endIndex": abs_end}
             }
         })
-        requests.append({
-            "insertText": {
-                "location": {"index": abs_start},
-                "text": replacement,
-            }
-        })
+        if replacement:
+            requests.append({
+                "insertText": {
+                    "location": {"index": abs_start},
+                    "text": replacement,
+                }
+            })
 
     await retry_transient(
         lambda: docs_service.documents()
