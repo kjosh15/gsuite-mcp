@@ -730,9 +730,20 @@ async def gdoc_batch_replace(
             ),
         }
 
-    # Denylist guard
+    # Denylist guard — fail-closed: refuse if env var is unset or empty
     review_ids_raw = os.environ.get("GDOC_REVIEW_DOC_IDS", "")
     review_ids = {rid.strip() for rid in review_ids_raw.split(",") if rid.strip()}
+    if not review_ids:
+        return {
+            "error": "DENYLIST_NOT_CONFIGURED",
+            "retryable": False,
+            "message": (
+                "GDOC_REVIEW_DOC_IDS env var is not set or empty. "
+                "gdoc_batch_replace refuses to run without an explicit "
+                "denylist. Set the var to a comma-separated list of "
+                "file IDs that require hand-review."
+            ),
+        }
     if file_id in review_ids and not allow_review_docs:
         return {
             "error": "REVIEW_DOC_BLOCKED",
