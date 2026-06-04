@@ -279,7 +279,7 @@ async def test_replace_section_basic():
     assert result["file_id"] == "file123"
     assert result["section_heading"] == "Chapter 1"
     assert result["heading_level"] == "HEADING_1"
-    assert result["characters_deleted"] == 30 - 10  # heading end to section end
+    assert result["chars_deleted"] == 30 - 10  # heading end to section end
     assert result["characters_inserted"] == len("New body.\n")
     assert result["include_heading"] is False
 
@@ -319,7 +319,7 @@ async def test_replace_section_include_heading():
     )
 
     assert result["include_heading"] is True
-    assert result["characters_deleted"] == 30 - 0  # heading start to section end
+    assert result["chars_deleted"] == 30 - 0  # heading start to section end
 
     call_args = svc.documents().batchUpdate.call_args
     body = call_args[1]["body"] if "body" in (call_args[1] or {}) else call_args[0][0] if call_args[0] else call_args[1].get("body")
@@ -393,7 +393,7 @@ async def test_replace_section_last_section_extends_to_end():
     result = await replace_section(svc, "file123", "Chapter 2", "Replaced.\n")
 
     assert result["file_id"] == "file123"
-    assert result["characters_deleted"] == 60 - 40  # heading end to doc end
+    assert result["chars_deleted"] == 60 - 40  # heading end to doc end
     assert result["characters_inserted"] == len("Replaced.\n")
 
 
@@ -466,7 +466,7 @@ async def test_replace_section_empty_section_body():
     result = await replace_section(svc, "file123", "Chapter 1", "New text.\n")
 
     assert "error" not in result
-    assert result["characters_deleted"] == 0
+    assert result["chars_deleted"] == 0
     assert result["characters_inserted"] == len("New text.\n")
 
 
@@ -481,7 +481,7 @@ async def test_replace_section_empty_section_inserts_after_heading():
     result = await replace_section(svc, "file123", "Chapter 1", "New body text.\n")
 
     assert "error" not in result
-    assert result["characters_deleted"] == 0
+    assert result["chars_deleted"] == 0
     assert result["characters_inserted"] == len("New body text.\n")
 
     # Verify batchUpdate was called (insert + style, no delete)
@@ -507,7 +507,7 @@ async def test_replace_section_empty_last_section_inserts():
     result = await replace_section(svc, "file123", "Chapter 2", "Final content.\n")
 
     assert "error" not in result
-    assert result["characters_deleted"] == 0
+    assert result["chars_deleted"] == 0
     assert result["characters_inserted"] == len("Final content.\n")
 
 
@@ -524,7 +524,7 @@ async def test_replace_section_final_section_clamps_trailing_newline():
     result = await replace_section(svc, "file123", "Chapter 2", "New final.\n")
 
     assert "error" not in result
-    assert result["characters_deleted"] == 60 - 40  # logical deletion
+    assert result["chars_deleted"] == 60 - 40  # logical deletion
 
     call_args = svc.documents().batchUpdate.call_args
     body = call_args[1]["body"] if "body" in (call_args[1] or {}) else call_args[0][0] if call_args[0] else call_args[1].get("body")
@@ -636,7 +636,7 @@ async def test_replace_section_expected_delete_chars_match():
         expected_delete_chars=20,
     )
     assert "error" not in result
-    assert result["characters_deleted"] == 20
+    assert result["chars_deleted"] == 20
 
 
 @pytest.mark.asyncio
@@ -736,7 +736,7 @@ async def test_replace_section_blast_radius_confirmed():
         confirm_delete_chars=6653,
     )
     assert "error" not in result
-    assert result["characters_deleted"] == 6653
+    assert result["chars_deleted"] == 6653
     svc.documents().batchUpdate.assert_called_once()
 
 
