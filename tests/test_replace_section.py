@@ -280,7 +280,7 @@ async def test_replace_section_basic():
     assert result["section_heading"] == "Chapter 1"
     assert result["heading_level"] == "HEADING_1"
     assert result["chars_deleted"] == 30 - 10  # heading end to section end
-    assert result["characters_inserted"] == len("New body.\n")
+    assert result["chars_inserted"] == len("New body.\n")
     assert result["include_heading"] is False
 
     # Verify batchUpdate was called
@@ -394,7 +394,7 @@ async def test_replace_section_last_section_extends_to_end():
 
     assert result["file_id"] == "file123"
     assert result["chars_deleted"] == 60 - 40  # heading end to doc end
-    assert result["characters_inserted"] == len("Replaced.\n")
+    assert result["chars_inserted"] == len("Replaced.\n")
 
 
 @pytest.mark.asyncio
@@ -467,7 +467,7 @@ async def test_replace_section_empty_section_body():
 
     assert "error" not in result
     assert result["chars_deleted"] == 0
-    assert result["characters_inserted"] == len("New text.\n")
+    assert result["chars_inserted"] == len("New text.\n")
 
 
 @pytest.mark.asyncio
@@ -482,7 +482,7 @@ async def test_replace_section_empty_section_inserts_after_heading():
 
     assert "error" not in result
     assert result["chars_deleted"] == 0
-    assert result["characters_inserted"] == len("New body text.\n")
+    assert result["chars_inserted"] == len("New body text.\n")
 
     # Verify batchUpdate was called (insert + style, no delete)
     call_args = svc.documents().batchUpdate.call_args
@@ -508,7 +508,7 @@ async def test_replace_section_empty_last_section_inserts():
 
     assert "error" not in result
     assert result["chars_deleted"] == 0
-    assert result["characters_inserted"] == len("Final content.\n")
+    assert result["chars_inserted"] == len("Final content.\n")
 
 
 @pytest.mark.asyncio
@@ -547,8 +547,8 @@ async def test_replace_section_ensures_trailing_newline():
     svc = _mock_docs_service(doc)
     result = await replace_section(svc, "file123", "Chapter 1", "No newline")
 
-    # characters_inserted should include the added newline
-    assert result["characters_inserted"] == len("No newline\n")
+    # chars_inserted should include the added newline
+    assert result["chars_inserted"] == len("No newline\n")
 
     call_args = svc.documents().batchUpdate.call_args
     body = call_args[1]["body"] if "body" in (call_args[1] or {}) else call_args[0][0] if call_args[0] else call_args[1].get("body")
