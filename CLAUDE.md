@@ -44,7 +44,7 @@ uv run python -m gsuite_mcp.auth_setup
 5. `get_files_metadata` — batch metadata for N files
 6. `append_to_file` — native append for Docs/Sheets; roundtrip fallback for plain files
 7. `replace_text` — exact + regex replace in Google Docs. Supports `expected_count` (pre-check before mutation), `preceded_by`/`followed_by` (context-anchored filtering within 200-char window)
-8. `replace_section` — replace content by heading/section in Google Docs (heading detection + positional delete/insert)
+8. `replace_section` — replace content by heading/section in Google Docs (heading detection + positional delete/insert). Supports `dry_run` (returns section span without writing), `expected_delete_chars` (precision check), `confirm_delete_chars` (bypass blast-radius guard). Returns `chars_deleted`, `chars_inserted`, `net_change`, `section_span`, `anchor_is_styled_heading`. NORMAL_TEXT fallback anchors flagged with `anchor_is_styled_heading: false`.
 9. `format_document` — batch paragraph formatting: set_style, set_text_style (bold/italic/underline/strikethrough), delete, delete_by_index, delete_empty_after, insert_paragraph (by index, inherits list formatting), insert_paragraph_after_match (by text match). Multi-match protection: >1 match fails unless `match_all: true`. `preview: true` for dry-run.
 10. `manage_comments` — list/create/reply/resolve on Drive comments
 11. `docx_suggest_edit` — tracked-change revision marks in .docx files
