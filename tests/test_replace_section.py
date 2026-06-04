@@ -856,3 +856,71 @@ async def test_server_replace_section_catches_http_error(mock_services):
     assert result["retryable"] is True
     assert result["http_status"] == 500
     assert "500" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_server_replace_section_custom_blast_threshold(mock_services):
+    """BLAST_RADIUS_MIN_DELTA env var raises the threshold."""
+    drive = mock_services["drive"]
+    docs = mock_services["docs"]
+
+    drive.files().get.return_value.execute.return_value = {
+        "name": "My Doc",
+        "mimeType": "application/vnd.google-apps.document",
+        "modifiedTime": "2026-06-04T12:00:00Z",
+    }
+
+    doc = _make_doc(
+        (0, 10, "Chapter 1\n", "HEADING_1"),
+        (10, 510, "x" * 499 + "\n", "NORMAL_TEXT"),
+        (510, 520, "Chapter 2\n", "HEADING_1"),
+    )
+    docs.documents().get.return_value.execute.return_value = doc
+    docs.documents().batchUpdate.return_value.execute.return_value = {"replies": []}
+
+    import os
+    with patch.dict(os.environ, {"BLAST_RADIUS_MIN_DELTA": "1000"}):
+        result = await server_replace_section(
+            file_id="d1",
+            section_heading="Chapter 1",
+            new_content="y" * 9 + "\n",
+        )
+
+    assert "error" not in result
+
+
+@pytest.mark.asyncio
+async def test_server_replace_section_auto_snapshot_on_confirmed_blast(mock_services):
+    """Confirmed blast-radius edit creates backup and returns backup_file_id."""
+    drive = mock_services["drive"]
+    docs = mock_services["docs"]
+
+    drive.files().get.return_value.execute.return_value = {
+        "name": "My Doc",
+        "mimeType": "application/vnd.google-apps.document",
+        "modifiedTime": "2026-06-04T12:00:00Z",
+        "parents": ["folder1"],
+    }
+
+    doc = _make_doc(
+        (0, 10, "Chapter 1\n", "HEADING_1"),
+        (10, 6663, "x" * 6652 + "\n", "NORMAL_TEXT"),
+        (6663, 6673, "Chapter 2\n", "HEADING_1"),
+    )
+    docs.documents().get.return_value.execute.return_value = doc
+    docs.documents().batchUpdate.return_value.execute.return_value = {"replies": []}
+
+    drive.files().copy.return_value.execute.return_value = {
+        "id": "backup_123", "name": "My Doc__autobackup_2026-06-04T12:00:00Z",
+    }
+
+    result = await server_replace_section(
+        file_id="d1",
+        section_heading="Chapter 1",
+        new_content="y" * 200 + "\n",
+        confirm_delete_chars=6653,
+    )
+
+    assert "error" not in result
+    assert result["backup_file_id"] == "backup_123"
+    drive.files().copy.assert_called_once()
