@@ -1666,6 +1666,8 @@ async def batch_replace(
             chars_deleted=total_chars_deleted,
             chars_inserted=total_chars_inserted,
             confirm_delete_chars=confirm_delete_chars,
+            min_delta=blast_min_delta,
+            max_ratio=blast_max_ratio,
         )
         if blast is not None:
             blast["results"] = results
