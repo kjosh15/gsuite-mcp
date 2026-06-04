@@ -361,6 +361,8 @@ async def replace_section(
             chars_deleted=characters_deleted,
             chars_inserted=characters_inserted,
             confirm_delete_chars=confirm_delete_chars,
+            min_delta=blast_min_delta,
+            max_ratio=blast_max_ratio,
         )
         if blast is not None:
             return blast
