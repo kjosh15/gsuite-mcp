@@ -1555,6 +1555,8 @@ async def batch_replace(
     edits: list[dict],
     dry_run: bool = False,
     confirm_delete_chars: int | None = None,
+    blast_min_delta: int = _BLAST_RADIUS_MIN_DELTA,
+    blast_max_ratio: float = _BLAST_RADIUS_MAX_RATIO,
 ) -> dict[str, Any]:
     """Batch find/replace across a Google Doc using client-side matching.
 
