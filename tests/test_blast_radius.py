@@ -1,7 +1,6 @@
 # tests/test_blast_radius.py
 """Tests for the blast-radius guard helper."""
 
-import pytest
 from gsuite_mcp.docs_ops import check_blast_radius
 
 
