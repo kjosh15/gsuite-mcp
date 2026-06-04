@@ -194,6 +194,7 @@ async def batch_replace(
     file_id: str,
     edits: list[dict],
     dry_run: bool = False,
+    confirm_delete_chars: int | None = None,
 ) -> dict[str, Any]:
     """Batch find/replace with Drive revision ID anchors.
 
