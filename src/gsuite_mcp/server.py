@@ -811,10 +811,25 @@ async def gdoc_batch_replace(
 
     docs = auth.get_docs_service()
     try:
+        # Auto-snapshot: create backup before mutation when caller confirmed blast-radius
+        backup_info = None
+        if confirm_delete_chars is not None:
+            backup_info = await drive_ops.create_backup_copy(
+                drive, file_id,
+                backup_folder_id=os.environ.get("BACKUP_FOLDER_ID"),
+            )
+
         result = await gdoc_ops.batch_replace(
             drive, docs, file_id, edits, dry_run=dry_run,
+            confirm_delete_chars=confirm_delete_chars,
         )
         result["file_id"] = file_id
+
+        # Merge backup info into successful result
+        if backup_info and "error" not in result:
+            result["backup_file_id"] = backup_info["backup_file_id"]
+            result["backup_file_name"] = backup_info["backup_file_name"]
+
         if result.get("committed"):
             meta2 = await asyncio.to_thread(
                 lambda: drive.files()
