@@ -221,6 +221,116 @@ async def test_batch_replace_reverse_order_requests():
     assert first_delete["startIndex"] > second_delete["startIndex"]
 
 
+# ---- Task 5: default expected_count=1 tests ----
+
+
+@pytest.mark.asyncio
+async def test_batch_replace_default_expected_count_1():
+    """Omitting expected_count now defaults to 1 (not None)."""
+    docs = MagicMock()
+    doc = _make_doc("Hello Hello Hello")  # 3 occurrences
+    docs.documents().get.return_value.execute.return_value = doc
+    from gsuite_mcp.docs_ops import batch_replace
+    result = await batch_replace(
+        docs, "file1",
+        edits=[{"find_text": "Hello", "replace_text": "Hi"}],
+    )
+    # 3 matches but default expected_count=1 -> count_mismatch
+    assert result["committed"] is False
+    assert result["results"][0]["status"] == "count_mismatch"
+    assert result["results"][0]["matches_found"] == 3
+    assert result["results"][0]["expected_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_batch_replace_explicit_count_overrides_default():
+    """Explicit expected_count overrides the default of 1."""
+    docs = MagicMock()
+    doc = _make_doc("Hello Hello Hello")
+    docs.documents().get.return_value.execute.return_value = doc
+    docs.documents().batchUpdate.return_value.execute.return_value = {"replies": []}
+    from gsuite_mcp.docs_ops import batch_replace
+    result = await batch_replace(
+        docs, "file1",
+        edits=[{"find_text": "Hello", "replace_text": "Hi", "expected_count": 3}],
+    )
+    assert result["committed"] is True
+    assert result["results"][0]["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_batch_replace_explicit_none_disables_count_check():
+    """Passing expected_count=None explicitly disables the count check."""
+    docs = MagicMock()
+    doc = _make_doc("Hello Hello Hello")
+    docs.documents().get.return_value.execute.return_value = doc
+    docs.documents().batchUpdate.return_value.execute.return_value = {"replies": []}
+    from gsuite_mcp.docs_ops import batch_replace
+    result = await batch_replace(
+        docs, "file1",
+        edits=[{"find_text": "Hello", "replace_text": "Hi", "expected_count": None}],
+    )
+    assert result["committed"] is True
+
+
+# ---- Task 6: blast-radius guard + diff summary tests ----
+
+
+@pytest.mark.asyncio
+async def test_batch_replace_blast_radius_trips():
+    """Large net deletion without confirm trips blast-radius guard."""
+    docs = MagicMock()
+    long_text = "x" * 499
+    doc = _make_doc(long_text)
+    docs.documents().get.return_value.execute.return_value = doc
+    docs.documents().batchUpdate.return_value.execute.return_value = {"replies": []}
+    from gsuite_mcp.docs_ops import batch_replace
+    result = await batch_replace(
+        docs, "file1",
+        edits=[{"find_text": long_text, "replace_text": "y", "expected_count": 1}],
+    )
+    assert result["error"] == "BLAST_RADIUS_EXCEEDED"
+    assert result["chars_deleted"] == 499
+    assert result["chars_inserted"] == 1
+    assert result["retryable"] is True
+    docs.documents().batchUpdate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_batch_replace_blast_radius_confirmed():
+    """confirm_delete_chars bypasses blast-radius guard."""
+    docs = MagicMock()
+    long_text = "x" * 499
+    doc = _make_doc(long_text)
+    docs.documents().get.return_value.execute.return_value = doc
+    docs.documents().batchUpdate.return_value.execute.return_value = {"replies": []}
+    from gsuite_mcp.docs_ops import batch_replace
+    result = await batch_replace(
+        docs, "file1",
+        edits=[{"find_text": long_text, "replace_text": "y", "expected_count": 1}],
+        confirm_delete_chars=499,
+    )
+    assert result["committed"] is True
+    docs.documents().batchUpdate.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_batch_replace_diff_summary():
+    """Response includes chars_deleted, chars_inserted, net_change."""
+    docs = MagicMock()
+    doc = _make_doc("Hello world")
+    docs.documents().get.return_value.execute.return_value = doc
+    docs.documents().batchUpdate.return_value.execute.return_value = {"replies": []}
+    from gsuite_mcp.docs_ops import batch_replace
+    result = await batch_replace(
+        docs, "file1",
+        edits=[{"find_text": "Hello", "replace_text": "Hi", "expected_count": 1}],
+    )
+    assert result["chars_deleted"] == 5  # len("Hello")
+    assert result["chars_inserted"] == 2  # len("Hi")
+    assert result["net_change"] == -3
+
+
 # ---- gdoc_ops.batch_replace wrapper tests ----
 
 
