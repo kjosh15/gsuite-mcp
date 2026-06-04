@@ -145,7 +145,7 @@ async def test_replace_section_passes_confirm_delete_chars(mock_services):
     )
 
     assert "error" not in result
-    assert result["characters_deleted"] == 6653
+    assert result["chars_deleted"] == 6653
 
 
 # -------------------------------------------------------------------
