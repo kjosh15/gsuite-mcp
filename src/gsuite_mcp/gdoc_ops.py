@@ -214,6 +214,7 @@ async def batch_replace(
 
     result = await docs_ops.batch_replace(
         docs_service, file_id, edits, dry_run=dry_run,
+        confirm_delete_chars=confirm_delete_chars,
     )
 
     result["revision_id_before"] = revision_id_before
