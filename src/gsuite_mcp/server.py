@@ -825,9 +825,15 @@ async def gdoc_batch_replace(
                 backup_folder_id=os.environ.get("BACKUP_FOLDER_ID"),
             )
 
+        # Read blast-radius thresholds from env
+        blast_min_delta = int(os.environ.get("BLAST_RADIUS_MIN_DELTA", "200"))
+        blast_max_ratio = float(os.environ.get("BLAST_RADIUS_MAX_RATIO", "2"))
+
         result = await gdoc_ops.batch_replace(
             drive, docs, file_id, edits, dry_run=dry_run,
             confirm_delete_chars=confirm_delete_chars,
+            blast_min_delta=blast_min_delta,
+            blast_max_ratio=blast_max_ratio,
         )
         result["file_id"] = file_id
 
