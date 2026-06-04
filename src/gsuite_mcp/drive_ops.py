@@ -313,6 +313,44 @@ async def trash_file(service, file_id: str) -> dict[str, Any]:
     return result
 
 
+async def create_backup_copy(
+    service,
+    file_id: str,
+    backup_folder_id: str | None = None,
+) -> dict[str, Any]:
+    """Create a backup copy of a file before a destructive edit.
+
+    Returns {backup_file_id, backup_file_name}.
+    """
+    from datetime import datetime, timezone
+
+    meta = await asyncio.to_thread(
+        lambda: service.files()
+        .get(fileId=file_id, fields="name,parents")
+        .execute()
+    )
+    name = meta.get("name", "Untitled")
+    parents = meta.get("parents", [])
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    backup_name = f"{name}__autobackup_{timestamp}"
+
+    target_parent = backup_folder_id or (parents[0] if parents else None)
+    body: dict[str, Any] = {"name": backup_name}
+    if target_parent:
+        body["parents"] = [target_parent]
+
+    copied = await asyncio.to_thread(
+        lambda: service.files()
+        .copy(fileId=file_id, body=body, fields="id,name")
+        .execute()
+    )
+
+    return {
+        "backup_file_id": copied["id"],
+        "backup_file_name": copied["name"],
+    }
+
+
 async def untrash_file(service, file_id: str) -> dict[str, Any]:
     """Restore a file from the trash."""
     resp = await asyncio.to_thread(
