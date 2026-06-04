@@ -1630,13 +1630,42 @@ async def batch_replace(
     # Count total replacements
     total = sum(len(m) for m in all_pair_matches)
 
+    # Compute diff summary
+    total_chars_deleted = 0
+    total_chars_inserted = 0
+    for pair_idx, matches in enumerate(all_pair_matches):
+        find_len = len(edits[pair_idx]["find_text"])
+        replace_len = len(edits[pair_idx]["replace_text"])
+        total_chars_deleted += find_len * len(matches)
+        total_chars_inserted += replace_len * len(matches)
+
+    diff_summary = {
+        "chars_deleted": total_chars_deleted,
+        "chars_inserted": total_chars_inserted,
+        "net_change": total_chars_inserted - total_chars_deleted,
+    }
+
     if dry_run or total == 0:
         return {
             "results": results,
             "committed": False,
             "total_replacements": total if not dry_run else 0,
             "dry_run": dry_run,
+            **diff_summary,
         }
+
+    # Blast-radius guard (skip during dry_run, already returned above)
+    if total > 0:
+        blast = check_blast_radius(
+            chars_deleted=total_chars_deleted,
+            chars_inserted=total_chars_inserted,
+            confirm_delete_chars=confirm_delete_chars,
+        )
+        if blast is not None:
+            blast["results"] = results
+            blast["committed"] = False
+            blast["total_replacements"] = 0
+            return blast
 
     # Phase 3: build requests in reverse document order
     ops: list[tuple[int, int, str]] = []
@@ -1675,4 +1704,5 @@ async def batch_replace(
         "results": results,
         "committed": True,
         "total_replacements": total,
+        **diff_summary,
     }
