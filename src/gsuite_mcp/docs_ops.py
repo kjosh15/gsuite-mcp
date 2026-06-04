@@ -251,6 +251,8 @@ async def replace_section(
     dry_run: bool = False,
     expected_delete_chars: int | None = None,
     confirm_delete_chars: int | None = None,
+    blast_min_delta: int = _BLAST_RADIUS_MIN_DELTA,
+    blast_max_ratio: float = _BLAST_RADIUS_MAX_RATIO,
 ) -> dict[str, Any]:
     """Replace the body (or body + heading) of a document section.
 
