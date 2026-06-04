@@ -42,7 +42,7 @@ async def test_create_backup_copy_custom_folder():
         "name": "My Document__autobackup_2026-06-04T12:00:00Z",
     }
 
-    result = await create_backup_copy(
+    await create_backup_copy(
         service, "original_id", backup_folder_id="custom_folder",
     )
 
