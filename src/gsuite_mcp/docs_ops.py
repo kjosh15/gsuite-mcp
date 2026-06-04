@@ -1574,7 +1574,9 @@ async def batch_replace(
     for edit in edits:
         find_text = edit["find_text"]
         replace_text = edit["replace_text"]
-        expected_count = edit.get("expected_count")
+        # Default to 1 if not specified (breaking change from None).
+        # Callers must pass expected_count=N for multi-match or None to disable.
+        expected_count = edit.get("expected_count", 1)
 
         matches = _find_all_substring(flat, find_text, match_case=True)
         status = "ok"
