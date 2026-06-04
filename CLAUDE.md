@@ -69,6 +69,9 @@ Required for `gdoc_batch_replace`:
 Optional:
 - `GSUITE_MCP_API_KEY` — shared secret for the bearer-token middleware (also accepts `GDRIVE_MCP_API_KEY` for backward compatibility)
 - `PORT` — HTTP port for the FastMCP server (default 8080)
+- `BLAST_RADIUS_MIN_DELTA` — min chars difference to trigger blast-radius guard (default 200)
+- `BLAST_RADIUS_MAX_RATIO` — min deletion/insertion ratio to trigger blast-radius guard (default 2)
+- `BACKUP_FOLDER_ID` — Drive folder for auto-snapshots on confirmed blast-radius trips (defaults to same folder as file)
 
 ## Key Constraints
 
