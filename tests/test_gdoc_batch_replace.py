@@ -189,7 +189,7 @@ async def test_batch_replace_all_zero_matches_no_commit():
     from gsuite_mcp.docs_ops import batch_replace
     result = await batch_replace(
         docs, "file1",
-        edits=[{"find_text": "NOTFOUND", "replace_text": "x"}],
+        edits=[{"find_text": "NOTFOUND", "replace_text": "x", "expected_count": None}],
     )
 
     assert result["committed"] is False
