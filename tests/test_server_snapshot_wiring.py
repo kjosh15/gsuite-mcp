@@ -1,7 +1,6 @@
 """Tests for server.py auto-snapshot wiring on replace_section and gdoc_batch_replace."""
 
-import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
