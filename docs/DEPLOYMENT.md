@@ -61,9 +61,12 @@ The legacy `gdrive-sa` service-account secret is **kept** for rollback only — 
 
 These are set directly on the Cloud Run service (not via Secret Manager):
 
-| Env var                  | Purpose                                                                 |
-| ------------------------ | ----------------------------------------------------------------------- |
-| `GDOC_REVIEW_DOC_IDS`   | Comma-separated file IDs for hand-review docs that `gdoc_batch_replace` will refuse without `allow_review_docs=True`. **Required** — the tool fails-closed if unset or empty. |
+| Env var                    | Purpose                                                                 |
+| -------------------------- | ----------------------------------------------------------------------- |
+| `GDOC_REVIEW_DOC_IDS`     | Comma-separated file IDs for hand-review docs that `gdoc_batch_replace` will refuse without `allow_review_docs=True`. **Required** — the tool fails-closed if unset or empty. |
+| `BLAST_RADIUS_MIN_DELTA`  | Minimum `chars_deleted - chars_inserted` before blast-radius guard trips (default: `200`). Optional. |
+| `BLAST_RADIUS_MAX_RATIO`  | Minimum `chars_deleted / chars_inserted` ratio before blast-radius guard trips (default: `2`). Optional. |
+| `BACKUP_FOLDER_ID`        | Drive folder ID for auto-snapshot copies. If unset, copies go to the same parent folder as the original file. Optional. |
 
 Set/update via (use `^;^` delimiter because the value contains commas):
 ```bash
