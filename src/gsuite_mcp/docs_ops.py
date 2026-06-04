@@ -381,6 +381,7 @@ async def replace_section(
             "dry_run": True,
             "chars_deleted": characters_deleted,
             "chars_inserted": characters_inserted,
+            "net_change": characters_inserted - characters_deleted,
             "section_span": section_span,
             "include_heading": include_heading,
             **anchor_flags,
