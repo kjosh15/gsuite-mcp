@@ -374,11 +374,17 @@ async def replace_section(
                 backup_folder_id=os.environ.get("BACKUP_FOLDER_ID"),
             )
 
+        # Read blast-radius thresholds from env
+        blast_min_delta = int(os.environ.get("BLAST_RADIUS_MIN_DELTA", "200"))
+        blast_max_ratio = float(os.environ.get("BLAST_RADIUS_MAX_RATIO", "2"))
+
         result = await docs_ops.replace_section(
             docs, file_id, section_heading, new_content, include_heading,
             dry_run=dry_run,
             expected_delete_chars=expected_delete_chars,
             confirm_delete_chars=confirm_delete_chars,
+            blast_min_delta=blast_min_delta,
+            blast_max_ratio=blast_max_ratio,
         )
         if "error" in result:
             return result
