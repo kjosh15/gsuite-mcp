@@ -247,6 +247,10 @@ async def replace_section(
     section_heading: str,
     new_content: str,
     include_heading: bool = False,
+    *,
+    dry_run: bool = False,
+    expected_delete_chars: int | None = None,
+    confirm_delete_chars: int | None = None,
 ) -> dict[str, Any]:
     """Replace the body (or body + heading) of a document section.
 
@@ -256,6 +260,18 @@ async def replace_section(
     ``NORMAL_TEXT``.  When *include_heading* is ``True`` the heading itself
     is also replaced and its original ``namedStyleType`` is reapplied to the
     first paragraph of the inserted text.
+
+    Parameters
+    ----------
+    dry_run : bool
+        When True, return the computed section span and character counts
+        without calling batchUpdate.
+    expected_delete_chars : int | None
+        If provided, abort with DELETE_CHARS_MISMATCH when the computed
+        characters_deleted does not match this value.
+    confirm_delete_chars : int | None
+        If provided, bypasses the blast-radius guard when it matches the
+        computed characters_deleted.
     """
     doc = await asyncio.to_thread(
         lambda: docs_service.documents()
@@ -306,10 +322,71 @@ async def replace_section(
 
     characters_inserted = len(new_content)
 
+    # Compute characters_deleted and section_span up-front
+    if empty_section:
+        characters_deleted = 0
+    else:
+        characters_deleted = delete_end - delete_start
+
+    section_span = {"start_index": delete_start, "end_index": delete_end}
+
+    # Anchor flags
+    anchor_is_styled_heading = heading["heading_level"] in _HEADING_RANKS
+
+    # section_extends_to: only when anchor is NORMAL_TEXT fallback and
+    # section runs to end of document
+    body_end = content[-1]["endIndex"] if content else 0
+    section_extends_to_eod = (
+        not anchor_is_styled_heading and section_end >= body_end
+    )
+
+    # --- expected_delete_chars check ---
+    if expected_delete_chars is not None and expected_delete_chars != characters_deleted:
+        return {
+            "error": "DELETE_CHARS_MISMATCH",
+            "retryable": True,
+            "expected": expected_delete_chars,
+            "actual": characters_deleted,
+            "message": (
+                f"Expected to delete {expected_delete_chars} chars "
+                f"but computed {characters_deleted}."
+            ),
+        }
+
+    # --- Blast-radius guard (skip during dry_run) ---
+    if not dry_run:
+        blast = check_blast_radius(
+            chars_deleted=characters_deleted,
+            chars_inserted=characters_inserted,
+            confirm_delete_chars=confirm_delete_chars,
+        )
+        if blast is not None:
+            return blast
+
+    # --- Anchor flag dict (shared across return paths) ---
+    anchor_flags: dict[str, Any] = {
+        "anchor_is_styled_heading": anchor_is_styled_heading,
+    }
+    if section_extends_to_eod:
+        anchor_flags["section_extends_to"] = "END_OF_DOCUMENT"
+
+    # --- dry_run early return ---
+    if dry_run:
+        return {
+            "file_id": file_id,
+            "section_heading": heading["text"],
+            "heading_level": heading["heading_level"],
+            "dry_run": True,
+            "chars_deleted": characters_deleted,
+            "chars_inserted": characters_inserted,
+            "section_span": section_span,
+            "include_heading": include_heading,
+            **anchor_flags,
+        }
+
     if empty_section:
         # No body to delete — insert after the heading
         insert_index = heading["end_index"]
-        characters_deleted = 0
 
         requests: list[dict] = [
             {
@@ -330,8 +407,6 @@ async def replace_section(
             },
         ]
     else:
-        characters_deleted = delete_end - delete_start
-
         # Clamp delete range to avoid the structural trailing newline
         delete_end_clamped = _clamp_delete_end(delete_end, content)
 
@@ -392,6 +467,8 @@ async def replace_section(
         "characters_deleted": characters_deleted,
         "characters_inserted": characters_inserted,
         "include_heading": include_heading,
+        "section_span": section_span,
+        **anchor_flags,
     }
 
 
