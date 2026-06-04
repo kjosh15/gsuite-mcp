@@ -68,7 +68,7 @@ async def test_batch_replace_dry_run():
     from gsuite_mcp.docs_ops import batch_replace
     result = await batch_replace(
         docs, "file1",
-        edits=[{"find_text": "Hello", "replace_text": "Hi"}],
+        edits=[{"find_text": "Hello", "replace_text": "Hi", "expected_count": 2}],
         dry_run=True,
     )
 
