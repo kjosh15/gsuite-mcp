@@ -319,6 +319,9 @@ async def replace_section(
     section_heading: str,
     new_content: str,
     include_heading: bool = False,
+    dry_run: bool = False,
+    expected_delete_chars: Optional[int] = None,
+    confirm_delete_chars: Optional[int] = None,
 ) -> dict[str, Any]:
     """Replace content in a Google Doc by heading/section.
 
@@ -333,6 +336,13 @@ async def replace_section(
             if include_heading=True).
         include_heading: If True, also replace the heading paragraph itself.
             Default False (preserve heading, replace only body).
+        dry_run: If True, compute the span and char counts without mutating.
+        expected_delete_chars: If set, abort with DELETE_CHARS_MISMATCH when
+            the computed deletion size differs.
+        confirm_delete_chars: Pass the exact chars_deleted value from a prior
+            dry_run or BLAST_RADIUS_EXCEEDED error to bypass the blast-radius
+            guard. When provided, an auto-backup snapshot is created before
+            the mutation.
 
     Refuses trashed files with error: TRASHED_FILE."""
     drive = auth.get_drive_service()
@@ -356,18 +366,36 @@ async def replace_section(
     docs = auth.get_docs_service()
 
     try:
+        # Auto-snapshot: create backup before mutation when caller confirmed blast-radius
+        backup_info = None
+        if confirm_delete_chars is not None:
+            backup_info = await drive_ops.create_backup_copy(
+                drive, file_id,
+                backup_folder_id=os.environ.get("BACKUP_FOLDER_ID"),
+            )
+
         result = await docs_ops.replace_section(
-            docs, file_id, section_heading, new_content, include_heading
+            docs, file_id, section_heading, new_content, include_heading,
+            dry_run=dry_run,
+            expected_delete_chars=expected_delete_chars,
+            confirm_delete_chars=confirm_delete_chars,
         )
         if "error" in result:
             return result
-        # Fetch updated modifiedTime
-        meta2 = await asyncio.to_thread(
-            lambda: drive.files()
-            .get(fileId=file_id, fields="modifiedTime")
-            .execute()
-        )
-        result["modified_time"] = meta2.get("modifiedTime", "")
+
+        # Merge backup info into successful result
+        if backup_info and "error" not in result:
+            result["backup_file_id"] = backup_info["backup_file_id"]
+            result["backup_file_name"] = backup_info["backup_file_name"]
+
+        if not dry_run:
+            # Fetch updated modifiedTime
+            meta2 = await asyncio.to_thread(
+                lambda: drive.files()
+                .get(fileId=file_id, fields="modifiedTime")
+                .execute()
+            )
+            result["modified_time"] = meta2.get("modifiedTime", "")
         return result
     except HttpError as exc:
         status = exc.resp.status if exc.resp else 0
