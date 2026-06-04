@@ -579,6 +579,203 @@ def _make_http_error(status: int) -> HttpError:
     return HttpError(resp, b"error")
 
 
+# -------------------------------------------------------------------
+# dry_run, expected_delete_chars, anchor flags, blast-radius guard
+# -------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_replace_section_dry_run_returns_span():
+    """dry_run=True returns computed span without calling batchUpdate."""
+    doc = _make_doc(
+        (0, 10, "Chapter 1\n", "HEADING_1"),
+        (10, 30, "Old body text here.\n", "NORMAL_TEXT"),
+        (30, 40, "Chapter 2\n", "HEADING_1"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await replace_section(
+        svc, "file123", "Chapter 1", "New body.\n", dry_run=True,
+    )
+    assert "error" not in result
+    assert result["dry_run"] is True
+    assert result["chars_deleted"] == 20  # 30 - 10
+    assert result["chars_inserted"] == len("New body.\n")
+    assert result["section_span"] == {"start_index": 10, "end_index": 30}
+    svc.documents().batchUpdate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_replace_section_dry_run_include_heading():
+    """dry_run with include_heading shows correct span from heading start."""
+    doc = _make_doc(
+        (0, 10, "Chapter 1\n", "HEADING_1"),
+        (10, 30, "Old body text here.\n", "NORMAL_TEXT"),
+        (30, 40, "Chapter 2\n", "HEADING_1"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await replace_section(
+        svc, "file123", "Chapter 1", "New.\n",
+        include_heading=True, dry_run=True,
+    )
+    assert result["dry_run"] is True
+    assert result["chars_deleted"] == 30  # 0 to 30
+    assert result["section_span"] == {"start_index": 0, "end_index": 30}
+    svc.documents().batchUpdate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_replace_section_expected_delete_chars_match():
+    """expected_delete_chars matching computed value proceeds normally."""
+    doc = _make_doc(
+        (0, 10, "Chapter 1\n", "HEADING_1"),
+        (10, 30, "Old body text here.\n", "NORMAL_TEXT"),
+        (30, 40, "Chapter 2\n", "HEADING_1"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await replace_section(
+        svc, "file123", "Chapter 1", "New.\n",
+        expected_delete_chars=20,
+    )
+    assert "error" not in result
+    assert result["characters_deleted"] == 20
+
+
+@pytest.mark.asyncio
+async def test_replace_section_expected_delete_chars_mismatch():
+    """expected_delete_chars not matching aborts with DELETE_CHARS_MISMATCH."""
+    doc = _make_doc(
+        (0, 10, "Chapter 1\n", "HEADING_1"),
+        (10, 30, "Old body text here.\n", "NORMAL_TEXT"),
+        (30, 40, "Chapter 2\n", "HEADING_1"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await replace_section(
+        svc, "file123", "Chapter 1", "New.\n",
+        expected_delete_chars=999,
+    )
+    assert result["error"] == "DELETE_CHARS_MISMATCH"
+    assert result["expected"] == 999
+    assert result["actual"] == 20
+    assert result["retryable"] is True
+    svc.documents().batchUpdate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_replace_section_normal_text_anchor_flagged():
+    """NORMAL_TEXT anchor includes anchor_is_styled_heading=false and section_extends_to."""
+    doc = _make_doc(
+        (0, 15, "My Bold Title\n", "NORMAL_TEXT"),
+        (15, 30, "Some body text.\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await replace_section(svc, "file123", "My Bold Title", "New.\n")
+    assert "error" not in result
+    assert result["anchor_is_styled_heading"] is False
+    assert result["section_extends_to"] == "END_OF_DOCUMENT"
+
+
+@pytest.mark.asyncio
+async def test_replace_section_formal_heading_anchor_flagged():
+    """Formal heading includes anchor_is_styled_heading=true."""
+    doc = _make_doc(
+        (0, 10, "Chapter 1\n", "HEADING_1"),
+        (10, 30, "Old body text here.\n", "NORMAL_TEXT"),
+        (30, 40, "Chapter 2\n", "HEADING_1"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await replace_section(svc, "file123", "Chapter 1", "New.\n")
+    assert "error" not in result
+    assert result["anchor_is_styled_heading"] is True
+    assert "section_extends_to" not in result or result.get("section_extends_to") != "END_OF_DOCUMENT"
+
+
+@pytest.mark.asyncio
+async def test_replace_section_dry_run_includes_anchor_flags():
+    """dry_run response also includes anchor_is_styled_heading."""
+    doc = _make_doc(
+        (0, 15, "My Bold Title\n", "NORMAL_TEXT"),
+        (15, 30, "Some body text.\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await replace_section(
+        svc, "file123", "My Bold Title", "New.\n", dry_run=True,
+    )
+    assert result["anchor_is_styled_heading"] is False
+    assert result["section_extends_to"] == "END_OF_DOCUMENT"
+
+
+@pytest.mark.asyncio
+async def test_replace_section_blast_radius_trips():
+    """Large deletion without confirm trips blast-radius guard."""
+    doc = _make_doc(
+        (0, 10, "Chapter 1\n", "HEADING_1"),
+        (10, 6663, "x" * 6652 + "\n", "NORMAL_TEXT"),
+        (6663, 6673, "Chapter 2\n", "HEADING_1"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await replace_section(
+        svc, "file123", "Chapter 1", "y" * 200 + "\n",
+    )
+    assert result["error"] == "BLAST_RADIUS_EXCEEDED"
+    assert result["chars_deleted"] == 6653
+    assert result["chars_inserted"] == 201
+    assert result["retryable"] is True
+    svc.documents().batchUpdate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_replace_section_blast_radius_confirmed():
+    """Passing confirm_delete_chars bypasses the guard."""
+    doc = _make_doc(
+        (0, 10, "Chapter 1\n", "HEADING_1"),
+        (10, 6663, "x" * 6652 + "\n", "NORMAL_TEXT"),
+        (6663, 6673, "Chapter 2\n", "HEADING_1"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await replace_section(
+        svc, "file123", "Chapter 1", "y" * 200 + "\n",
+        confirm_delete_chars=6653,
+    )
+    assert "error" not in result
+    assert result["characters_deleted"] == 6653
+    svc.documents().batchUpdate.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_replace_section_blast_radius_skipped_on_dry_run():
+    """dry_run does NOT trip blast-radius guard (just returns the info)."""
+    doc = _make_doc(
+        (0, 10, "Chapter 1\n", "HEADING_1"),
+        (10, 6663, "x" * 6652 + "\n", "NORMAL_TEXT"),
+        (6663, 6673, "Chapter 2\n", "HEADING_1"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await replace_section(
+        svc, "file123", "Chapter 1", "y" * 200 + "\n",
+        dry_run=True,
+    )
+    assert result.get("dry_run") is True
+    assert result["chars_deleted"] == 6653
+    assert "error" not in result
+
+
+@pytest.mark.asyncio
+async def test_replace_section_returns_section_span():
+    """Normal (non-dry-run) result includes section_span."""
+    doc = _make_doc(
+        (0, 10, "Chapter 1\n", "HEADING_1"),
+        (10, 30, "Old body text here.\n", "NORMAL_TEXT"),
+        (30, 40, "Chapter 2\n", "HEADING_1"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await replace_section(svc, "file123", "Chapter 1", "New body.\n")
+    assert result["section_span"] == {"start_index": 10, "end_index": 30}
+    assert result["anchor_is_styled_heading"] is True
+
+
+# -------------------------------------------------------------------
+# Server-level tests for replace_section tool wrapper
+# -------------------------------------------------------------------
+
 @pytest.mark.asyncio
 async def test_server_replace_section_not_a_google_doc(mock_services):
     """Server wrapper rejects non-Google-Doc files with NOT_A_GOOGLE_DOC."""
