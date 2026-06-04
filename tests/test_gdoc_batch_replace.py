@@ -208,7 +208,7 @@ async def test_batch_replace_reverse_order_requests():
     from gsuite_mcp.docs_ops import batch_replace
     await batch_replace(
         docs, "file1",
-        edits=[{"find_text": "AAA", "replace_text": "X"}],
+        edits=[{"find_text": "AAA", "replace_text": "X", "expected_count": 2}],
     )
 
     call_args = docs.documents().batchUpdate.call_args
