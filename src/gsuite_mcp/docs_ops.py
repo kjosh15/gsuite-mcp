@@ -16,6 +16,52 @@ _HEADING_RANKS: dict[str, int] = {
 
 _FALLBACK_RANK: int = 7
 
+# ---------------------------------------------------------------------------
+# Blast-radius guard
+# ---------------------------------------------------------------------------
+
+_BLAST_RADIUS_MIN_DELTA: int = 200
+_BLAST_RADIUS_MAX_RATIO: float = 2.0
+
+
+def check_blast_radius(
+    *,
+    chars_deleted: int,
+    chars_inserted: int,
+    confirm_delete_chars: int | None = None,
+    min_delta: int = _BLAST_RADIUS_MIN_DELTA,
+    max_ratio: float = _BLAST_RADIUS_MAX_RATIO,
+) -> dict[str, Any] | None:
+    """Return an error dict if the edit exceeds the blast-radius threshold.
+
+    Returns None if the edit is safe or confirmed.
+    Both conditions must hold to trip the guard:
+      1. chars_deleted - chars_inserted > min_delta
+      2. chars_deleted > chars_inserted * max_ratio
+    Passing confirm_delete_chars == chars_deleted bypasses the guard.
+    """
+    delta = chars_deleted - chars_inserted
+    ratio_exceeded = (
+        chars_inserted == 0 or chars_deleted > chars_inserted * max_ratio
+    )
+
+    if delta > min_delta and ratio_exceeded:
+        if confirm_delete_chars == chars_deleted:
+            return None
+        return {
+            "error": "BLAST_RADIUS_EXCEEDED",
+            "retryable": True,
+            "chars_deleted": chars_deleted,
+            "chars_inserted": chars_inserted,
+            "net_change": chars_inserted - chars_deleted,
+            "message": (
+                f"Deletion exceeds safety threshold. "
+                f"Pass confirm_delete_chars={chars_deleted} to proceed."
+            ),
+        }
+    return None
+
+
 VALID_NAMED_STYLES: set[str] = {
     "NORMAL_TEXT",
     "TITLE",
