@@ -725,6 +725,7 @@ async def gdoc_batch_replace(
     edits: list[dict[str, Any]],
     dry_run: bool = False,
     allow_review_docs: bool = False,
+    confirm_delete_chars: Optional[int] = None,
 ) -> dict[str, Any]:
     """Batch find/replace in a live Google Doc, in place.
 
@@ -737,6 +738,11 @@ async def gdoc_batch_replace(
     dry_run=True returns per-pair match counts without writing.
     allow_review_docs=False (default) blocks edits to hand-review docs
     listed in the GDOC_REVIEW_DOC_IDS env var.
+
+    confirm_delete_chars: Pass the exact chars_deleted value from a prior
+    dry_run or BLAST_RADIUS_EXCEEDED error to bypass the blast-radius
+    guard. When provided, an auto-backup snapshot is created before
+    the mutation.
 
     Returns revision_id_before/after (Drive revision IDs) for rollback.
     Refuses trashed files with error: TRASHED_FILE."""
