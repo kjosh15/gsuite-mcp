@@ -169,7 +169,7 @@ async def test_batch_replace_zero_matches_no_error():
         docs, "file1",
         edits=[
             {"find_text": "Hello", "replace_text": "Hi"},
-            {"find_text": "NOTFOUND", "replace_text": "x"},
+            {"find_text": "NOTFOUND", "replace_text": "x", "expected_count": None},
         ],
     )
 
