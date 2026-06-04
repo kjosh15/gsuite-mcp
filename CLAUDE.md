@@ -84,6 +84,7 @@ Optional:
 - Read tools return `trashed: true` with `trashed_time` for files in Drive trash.
 - `gdoc_batch_replace` uses client-side matching with `deleteContentRange`+`insertText` (not `replaceAllText`), so cross-paragraph find/replace works. Always case-sensitive. Pure deletions (`replace_text=""`) emit only `deleteContentRange` (no empty `insertText`).
 - `gdoc_batch_replace` requires `GDOC_REVIEW_DOC_IDS` to be set — fails-closed with `DENYLIST_NOT_CONFIGURED` if unset or empty. This is the safety guarantee for in-place edits: hand-review docs are walled off by the denylist.
+- **Blast-radius guard** on `replace_section` and `gdoc_batch_replace`: large deletions (delta > `BLAST_RADIUS_MIN_DELTA` AND ratio > `BLAST_RADIUS_MAX_RATIO`) are refused with `BLAST_RADIUS_EXCEEDED`. Pass `confirm_delete_chars=<N>` to proceed. Confirmed blast-radius trips auto-create a backup copy before executing (returned as `backup_file_id`).
 
 ## Session Tracking
 Total Claude sessions: 17
