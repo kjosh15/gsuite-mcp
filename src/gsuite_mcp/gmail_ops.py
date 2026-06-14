@@ -102,3 +102,56 @@ async def create_reply_draft(
         "to": to,
         "confirmation": f"Draft created in thread {thread_id}",
     }
+
+
+_SELF_ADDRESS = "josh@josh.is"
+
+
+async def deliver_to_inbox(
+    gmail_service,
+    subject: str,
+    body: str,
+    content_type: str = "plain",
+) -> dict[str, Any]:
+    """Insert a message directly into the authenticated user's own inbox.
+
+    Uses Gmail API users.messages.insert (NOT send). This method can only
+    write to the authenticated user's mailbox — it cannot transmit to
+    third parties.
+
+    Args:
+        gmail_service: Authenticated Gmail API service object.
+        subject: Email subject line.
+        body: Message body (plain text or HTML).
+        content_type: 'plain' (default) or 'html'.
+
+    Returns:
+        dict with message_id and thread_id.
+    """
+    mime_subtype = "html" if content_type == "html" else "plain"
+    msg = MIMEText(body, mime_subtype)
+    msg["From"] = _SELF_ADDRESS
+    msg["To"] = _SELF_ADDRESS
+    msg["Subject"] = subject
+    msg["Date"] = formatdate(localtime=True)
+
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii")
+
+    result = await asyncio.to_thread(
+        lambda: gmail_service.users()
+        .messages()
+        .insert(
+            userId="me",
+            body={
+                "raw": raw,
+                "labelIds": ["INBOX", "UNREAD"],
+            },
+            internalDateSource="dateHeader",
+        )
+        .execute()
+    )
+
+    return {
+        "message_id": result["id"],
+        "thread_id": result["threadId"],
+    }
