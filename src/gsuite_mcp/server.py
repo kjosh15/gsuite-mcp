@@ -933,6 +933,31 @@ async def create_reply_draft(
 
 
 @mcp.tool()
+async def deliver_to_inbox(
+    subject: str,
+    body: str,
+    content_type: str = "plain",
+) -> dict[str, Any]:
+    """Place a message into the authenticated user's own Gmail inbox.
+
+    Uses Gmail API users.messages.insert — can only write to the
+    authenticated user's mailbox, never transmits to third parties.
+    From and To are hard-coded to josh@josh.is.
+
+    Args:
+        subject: Email subject line.
+        body: Message body (plain text or HTML).
+        content_type: 'plain' (default) or 'html'.
+    """
+    return await gmail_ops.deliver_to_inbox(
+        gmail_service=auth.get_gmail_service(),
+        subject=subject,
+        body=body,
+        content_type=content_type,
+    )
+
+
+@mcp.tool()
 async def read_paragraph_at_path(
     file_id: str,
     path: str,
