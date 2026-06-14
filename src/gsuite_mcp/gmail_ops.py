@@ -1,9 +1,10 @@
-"""Gmail API operations — thread-aware draft creation."""
+"""Gmail API operations — thread-aware draft creation and inbox delivery."""
 
 import asyncio
 import base64
 import re
 from email.mime.text import MIMEText
+from email.utils import formatdate
 from typing import Any, Optional
 
 
