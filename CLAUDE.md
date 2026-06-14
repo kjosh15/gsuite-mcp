@@ -80,7 +80,7 @@ Optional:
 - Single-user OAuth only (service accounts removed)
 - Streamable HTTP transport for Cloud Run
 - `docx_suggest_edit` requires matches to fit within one paragraph (v1)
-- Gmail scopes: `gmail.compose` + `gmail.readonly` (narrowest for drafts). Users must re-run `auth_setup` after upgrade to grant Gmail scopes.
+- Gmail scopes: `gmail.compose` + `gmail.readonly` + `gmail.insert` (narrowest for drafts + inbox delivery). Users must re-run `auth_setup` after upgrade to grant new scopes.
 - Mutation tools refuse trashed files with `error: TRASHED_FILE`. Use `untrash_file` to restore first.
 - Read tools return `trashed: true` with `trashed_time` for files in Drive trash.
 - `gdoc_batch_replace` uses client-side matching with `deleteContentRange`+`insertText` (not `replaceAllText`), so cross-paragraph find/replace works. Always case-sensitive. Pure deletions (`replace_text=""`) emit only `deleteContentRange` (no empty `insertText`).
