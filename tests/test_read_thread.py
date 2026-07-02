@@ -70,3 +70,36 @@ async def test_paginates_and_resumes_via_cursor():
 
     assert seen == ["m0", "m1", "m2", "m3"]
     assert last_page["truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_message_limit_caps_page():
+    msgs = [_msg(f"m{i}", "a@x.com", "short") for i in range(5)]
+    svc = _service(msgs)
+    result = await gmail_ops.read_thread(svc, "t1", message_limit=2)
+    assert len(result["messages"]) == 2
+    assert result["truncated"] is True
+
+
+@pytest.mark.asyncio
+async def test_strip_quoted_history_flag():
+    body = "New reply.\n\nOn Mon, Jul 1 2026 Alice wrote:\n> old\n"
+    svc = _service([_msg("m1", "a@x.com", body)])
+    result = await gmail_ops.read_thread(svc, "t1", strip_quoted_history=True)
+    assert result["messages"][0]["body"] == "New reply."
+    assert result["messages"][0]["quoted_history_stripped"] is True
+
+
+@pytest.mark.asyncio
+async def test_thread_changed_flag_on_new_history():
+    svc = _service([_msg("m1", "a@x.com", "hi")], history_id="200")
+    stale = pagination.encode_cursor({"kind": "thread", "offset": 0, "history_id": "100"})
+    result = await gmail_ops.read_thread(svc, "t1", cursor=stale)
+    assert result["thread_changed"] is True
+
+
+@pytest.mark.asyncio
+async def test_malformed_cursor_returns_error():
+    svc = _service([_msg("m1", "a@x.com", "hi")])
+    result = await gmail_ops.read_thread(svc, "t1", cursor="garbage!!!")
+    assert result["error"] == "INVALID_CURSOR"
