@@ -1717,3 +1717,76 @@ async def batch_replace(
         "total_replacements": total,
         **diff_summary,
     }
+
+
+# ---------------------------------------------------------------------------
+# Bounded body read
+# ---------------------------------------------------------------------------
+
+
+async def read_document_body(
+    docs_service,
+    file_id: str,
+    cursor: str | None = None,
+    max_bytes: int = 100_000,
+) -> dict[str, Any]:
+    """Read a Google Doc's body text with bounded, cursor-based pagination.
+
+    Pagination is by structural element (content block). The cursor embeds the
+    document ``revisionId``; if the doc changed since the cursor was issued the
+    call returns a ``STALE_CURSOR`` error (indices may have shifted) rather than
+    risk skipping or duplicating content.
+
+    Returns success keys revision_id, body, truncated, next_cursor; or an
+    INVALID_CURSOR / STALE_CURSOR error dict.
+    """
+    doc = await asyncio.to_thread(
+        lambda: docs_service.documents().get(documentId=file_id).execute()
+    )
+    revision_id = doc.get("revisionId", "")
+    content = doc.get("body", {}).get("content", [])
+
+    unit_texts = [
+        _para_text(block["paragraph"]) if block.get("paragraph") else ""
+        for block in content
+    ]
+
+    start = 0
+    if cursor is not None:
+        try:
+            payload = pagination.decode_cursor(cursor)
+        except ValueError:
+            return {
+                "error": "INVALID_CURSOR",
+                "retryable": False,
+                "message": "Cursor is malformed or unrecognized.",
+            }
+        if payload.get("revision_id") != revision_id:
+            return {
+                "error": "STALE_CURSOR",
+                "retryable": True,
+                "revision_id": revision_id,
+                "message": (
+                    "Document changed since the cursor was issued. "
+                    "Restart pagination from the beginning."
+                ),
+            }
+        start = int(payload.get("offset", 0))
+
+    sizes = [len(t.encode("utf-8")) for t in unit_texts]
+    end = pagination.take_within_budget(sizes, start, max_bytes)
+    truncated = end < len(unit_texts)
+    next_cursor = (
+        pagination.encode_cursor(
+            {"kind": "doc", "offset": end, "revision_id": revision_id}
+        )
+        if truncated
+        else None
+    )
+
+    return {
+        "revision_id": revision_id,
+        "body": "".join(unit_texts[start:end]),
+        "truncated": truncated,
+        "next_cursor": next_cursor,
+    }
