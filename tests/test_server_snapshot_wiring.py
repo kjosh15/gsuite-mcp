@@ -438,3 +438,19 @@ async def test_gdoc_batch_replace_no_snapshot_on_error(mock_services):
     # Backup was created (since confirm_delete_chars was provided), but
     # backup info should NOT be merged into error results
     assert "backup_file_id" not in result
+
+
+# -------------------------------------------------------------------
+# read_thread / read_document: tool registration
+# -------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_read_tools_registered():
+    """read_thread and read_document are registered as MCP tools."""
+    from gsuite_mcp import server
+
+    tools = await server.mcp.list_tools()
+    names = {t.name for t in tools}
+    assert "read_thread" in names
+    assert "read_document" in names
