@@ -30,6 +30,21 @@ def decode_cursor(cursor: str) -> dict[str, Any]:
     return payload
 
 
+def offset_from(payload: dict[str, Any], unit_count: int) -> int:
+    """Extract and validate a paginated offset from a decoded cursor payload.
+
+    Raises ValueError if ``offset`` is missing-then-nonzero-invalid, not a
+    non-bool int, or outside ``[0, unit_count]`` (``unit_count`` itself is a
+    valid empty-tail cursor). Callers map the ValueError to INVALID_CURSOR.
+    """
+    offset = payload.get("offset", 0)
+    if isinstance(offset, bool) or not isinstance(offset, int):
+        raise ValueError(f"invalid cursor offset: {offset!r}")
+    if offset < 0 or offset > unit_count:
+        raise ValueError(f"cursor offset out of range: {offset}")
+    return offset
+
+
 def take_within_budget(
     sizes: list[int],
     start: int,
