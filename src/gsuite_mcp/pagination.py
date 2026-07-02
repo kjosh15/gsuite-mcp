@@ -48,7 +48,7 @@ def take_within_budget(
     end = start
     total = 0
     while end < n:
-        if hard_limit is not None and (end - start) >= hard_limit:
+        if end > start and hard_limit is not None and (end - start) >= hard_limit:
             break
         nxt = total + sizes[end]
         if end > start and nxt > max_bytes:
