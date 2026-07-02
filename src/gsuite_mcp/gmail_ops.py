@@ -7,6 +7,8 @@ from email.mime.text import MIMEText
 from email.utils import formatdate
 from typing import Any, Optional
 
+from gsuite_mcp import gmail_quotes, pagination
+
 
 def _get_header(headers: list[dict], name: str) -> str:
     """Extract a header value from Gmail's payload.headers list."""
