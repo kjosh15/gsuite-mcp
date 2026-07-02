@@ -42,3 +42,8 @@ def test_budget_respects_hard_limit():
 
 def test_budget_start_past_end():
     assert pagination.take_within_budget([10, 10], 5, 100) == 5
+
+
+def test_budget_hard_limit_zero_still_takes_one():
+    # hard_limit must never override the forward-progress guarantee
+    assert pagination.take_within_budget([10, 10], 0, 100, hard_limit=0) == 1
