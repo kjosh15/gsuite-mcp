@@ -58,6 +58,8 @@ uv run python -m gsuite_mcp.auth_setup
 17. `read_paragraph_at_path` — navigate Google Doc heading/list structure via path syntax (e.g. `TASKS / Career / #2`), returns text + indices
 18. `gdoc_batch_replace` — batch find/replace in a live Google Doc
 19. `deliver_to_inbox` — insert a message into the authenticated user's own Gmail inbox via `messages.insert` (NOT send). From/To hard-coded to `josh@josh.is`. Inputs: `subject`, `body`, `content_type`. Cannot email third parties. (in-place, atomic, cross-paragraph, count verification, dry-run, review-doc denylist). Edits default to `expected_count: 1` (breaking: pass explicit count for multi-match). Supports `confirm_delete_chars` for blast-radius guard bypass. Returns aggregate `chars_deleted`, `chars_inserted`, `net_change`.
+20. `read_thread` — bounded Gmail thread read: strip_quoted_history, message_limit/cursor pagination, never-silent truncation (truncated + next_cursor), thread_changed flag on append.
+21. `read_document` — bounded Google Doc read: fields projection (["body"]/["comments"]/both), structural-element pagination, STALE_CURSOR on mid-pagination edits.
 
 ## Environment Variables
 
