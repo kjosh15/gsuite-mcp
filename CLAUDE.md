@@ -88,5 +88,5 @@ Optional:
 - **Blast-radius guard** on `replace_section` and `gdoc_batch_replace`: large deletions (delta > `BLAST_RADIUS_MIN_DELTA` AND ratio > `BLAST_RADIUS_MAX_RATIO`) are refused with `BLAST_RADIUS_EXCEEDED`. Pass `confirm_delete_chars=<N>` to proceed. Confirmed blast-radius trips auto-create a backup copy before executing (returned as `backup_file_id`).
 
 ## Session Tracking
-Total Claude sessions: 20
-Last session: 2026-07-02 09:20:21
+Total Claude sessions: 21
+Last session: 2026-07-02 09:20:27
