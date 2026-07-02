@@ -57,7 +57,16 @@ async def test_paginates_and_resumes_via_cursor():
     # (60 bytes), then rejects unit 1 (60+60=120 > 100), so each page holds one
     # message. Verified by running the test.
     assert len(page1["messages"]) == 1
-    page2 = await gmail_ops.read_thread(svc, "t1", cursor=page1["next_cursor"], max_bytes=100)
-    seen = [m["id"] for m in page1["messages"]] + [m["id"] for m in page2["messages"]]
+
+    seen = [m["id"] for m in page1["messages"]]
+    cursor = page1["next_cursor"]
+    truncated = page1["truncated"]
+    last_page = page1
+    while truncated:
+        last_page = await gmail_ops.read_thread(svc, "t1", cursor=cursor, max_bytes=100)
+        seen += [m["id"] for m in last_page["messages"]]
+        cursor = last_page["next_cursor"]
+        truncated = last_page["truncated"]
+
     assert seen == ["m0", "m1", "m2", "m3"]
-    assert page2["truncated"] is False
+    assert last_page["truncated"] is False
