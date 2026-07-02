@@ -28,7 +28,7 @@ uv run python -m gsuite_mcp.auth_setup
 - `src/gsuite_mcp/sheets_ops.py` — Sheets v4 operations (append rows)
 - `src/gsuite_mcp/docx_edits.py` — OOXML tracked-changes (pure functions)
 - `src/gsuite_mcp/gdoc_ops.py` — Google Doc operations (template populate, suggest edit via .docx export, batch replace with revision IDs)
-- `src/gsuite_mcp/gmail_ops.py` — Gmail v1 operations (thread-aware draft creation, inbox delivery via messages.insert)
+- `src/gsuite_mcp/gmail_ops.py` — Gmail v1 operations (thread-aware draft creation, inbox delivery via messages.insert, read_thread)
 - `src/gsuite_mcp/retry.py` — retry helper with exponential backoff for transient Google API errors (5xx, 429)
 - `src/gsuite_mcp/api_key_middleware.py` — Starlette auth middleware (bearer token or `?key=` query param)
 - `src/gsuite_mcp/server.py` — FastMCP server exposing 21 tools (refuses to start without `GSUITE_MCP_API_KEY`)
