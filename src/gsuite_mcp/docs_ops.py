@@ -4,6 +4,7 @@ import asyncio
 import re
 from typing import Any
 
+from gsuite_mcp import pagination
 from gsuite_mcp.retry import retry_transient
 
 # ---------------------------------------------------------------------------
