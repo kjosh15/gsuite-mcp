@@ -66,3 +66,12 @@ async def test_malformed_cursor_returns_error():
     svc = _service(_doc(["Alpha\n"]))
     result = await docs_ops.read_document_body(svc, "d1", cursor="garbage!!!")
     assert result["error"] == "INVALID_CURSOR"
+
+
+@pytest.mark.asyncio
+async def test_invalid_offset_cursor_returns_error():
+    svc = _service(_doc(["Alpha\n", "Beta\n"], revision="rev1"))
+    bad_neg = pagination.encode_cursor({"kind": "doc", "offset": -1, "revision_id": "rev1"})
+    bad_type = pagination.encode_cursor({"kind": "doc", "offset": "nope", "revision_id": "rev1"})
+    assert (await docs_ops.read_document_body(svc, "d1", cursor=bad_neg))["error"] == "INVALID_CURSOR"
+    assert (await docs_ops.read_document_body(svc, "d1", cursor=bad_type))["error"] == "INVALID_CURSOR"
