@@ -1771,7 +1771,14 @@ async def read_document_body(
                     "Restart pagination from the beginning."
                 ),
             }
-        start = int(payload.get("offset", 0))
+        try:
+            start = pagination.offset_from(payload, len(unit_texts))
+        except ValueError:
+            return {
+                "error": "INVALID_CURSOR",
+                "retryable": False,
+                "message": "Cursor is malformed or unrecognized.",
+            }
 
     sizes = [len(t.encode("utf-8")) for t in unit_texts]
     end = pagination.take_within_budget(sizes, start, max_bytes)
