@@ -75,3 +75,46 @@ async def test_invalid_offset_cursor_returns_error():
     bad_type = pagination.encode_cursor({"kind": "doc", "offset": "nope", "revision_id": "rev1"})
     assert (await docs_ops.read_document_body(svc, "d1", cursor=bad_neg))["error"] == "INVALID_CURSOR"
     assert (await docs_ops.read_document_body(svc, "d1", cursor=bad_type))["error"] == "INVALID_CURSOR"
+
+
+# -------------------------------------------------------------------
+# Tool-level: server.read_document field-projection orchestration
+# -------------------------------------------------------------------
+
+
+def _meta_service(mime, trashed=False):
+    svc = MagicMock()
+    get = MagicMock()
+    get.execute.return_value = {"mimeType": mime, "trashed": trashed, "trashedTime": None}
+    svc.files().get.return_value = get
+    return svc
+
+
+@pytest.mark.asyncio
+async def test_tool_read_document_body_only(monkeypatch):
+    from gsuite_mcp import server
+
+    monkeypatch.setattr(server.auth, "get_drive_service", lambda: _meta_service("application/vnd.google-apps.document"))
+    monkeypatch.setattr(server.auth, "get_docs_service", lambda: _service(_doc(["Body text\n"])))
+
+    result = await server.read_document(file_id="d1", fields=["body"])
+    assert result["body"] == "Body text\n"
+    assert "comments" not in result
+
+
+@pytest.mark.asyncio
+async def test_tool_read_document_rejects_non_doc(monkeypatch):
+    from gsuite_mcp import server
+
+    monkeypatch.setattr(server.auth, "get_drive_service", lambda: _meta_service("application/pdf"))
+    result = await server.read_document(file_id="d1")
+    assert result["error"] == "NOT_A_GOOGLE_DOC"
+
+
+@pytest.mark.asyncio
+async def test_tool_read_document_invalid_fields(monkeypatch):
+    from gsuite_mcp import server
+
+    monkeypatch.setattr(server.auth, "get_drive_service", lambda: _meta_service("application/vnd.google-apps.document"))
+    result = await server.read_document(file_id="d1", fields=["bogus"])
+    assert result["error"] == "INVALID_FIELDS"
