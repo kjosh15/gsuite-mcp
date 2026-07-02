@@ -189,29 +189,32 @@ async def read_thread(
             }
         prev_history = payload.get("history_id")
 
-    built: list[dict[str, Any]] = []
-    sizes: list[int] = []
-    for msg in messages:
-        payload_ = msg.get("payload", {})
-        headers = payload_.get("headers", [])
-        body_text, stripped = _message_body(payload_, strip_quoted_history)
-        built.append({
-            "id": msg.get("id", ""),
-            "from": _get_header(headers, "From"),
-            "to": _get_header(headers, "To"),
-            "date": _get_header(headers, "Date"),
-            "subject": _get_header(headers, "Subject"),
-            "body": body_text,
-            "quoted_history_stripped": stripped,
-        })
-        sizes.append(len(body_text.encode("utf-8")))
-
     limit = message_limit if (message_limit is None or message_limit >= 1) else 1
-    end = pagination.take_within_budget(sizes, start, max_bytes, hard_limit=limit)
-    truncated = end < len(built)
+
+    # Walk only this page's messages: extract/quote-strip lazily from `start`,
+    # accumulating UTF-8 body bytes, and stop at the message-count or byte
+    # budget. Messages before `start` and beyond the page are never decoded, so
+    # a full paginated walk is O(N) total rather than O(N^2). The first message
+    # is always included (forward-progress guarantee) even if it alone exceeds
+    # the budget.
+    n = len(messages)
+    page: list[dict[str, Any]] = []
+    total = 0
+    idx = start
+    while idx < n:
+        if limit is not None and len(page) >= limit:
+            break
+        item, size = _build_message_item(messages[idx], strip_quoted_history)
+        if page and total + size > max_bytes:
+            break
+        page.append(item)
+        total += size
+        idx += 1
+
+    truncated = idx < n
     next_cursor = (
         pagination.encode_cursor(
-            {"kind": "thread", "offset": end, "history_id": history_id}
+            {"kind": "thread", "offset": idx, "history_id": history_id}
         )
         if truncated
         else None
@@ -219,7 +222,7 @@ async def read_thread(
 
     return {
         "thread_id": thread_id,
-        "messages": built[start:end],
+        "messages": page,
         "truncated": truncated,
         "next_cursor": next_cursor,
         "thread_changed": prev_history is not None and prev_history != history_id,
