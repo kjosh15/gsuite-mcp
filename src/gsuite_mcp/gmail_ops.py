@@ -139,6 +139,23 @@ def _message_body(payload: dict, strip_quotes: bool) -> tuple[str, bool]:
     return text, False
 
 
+def _build_message_item(msg: dict, strip_quotes: bool) -> tuple[dict[str, Any], int]:
+    """Build one message's response item and its UTF-8 body size in bytes."""
+    payload = msg.get("payload", {})
+    headers = payload.get("headers", [])
+    body_text, stripped = _message_body(payload, strip_quotes)
+    item = {
+        "id": msg.get("id", ""),
+        "from": _get_header(headers, "From"),
+        "to": _get_header(headers, "To"),
+        "date": _get_header(headers, "Date"),
+        "subject": _get_header(headers, "Subject"),
+        "body": body_text,
+        "quoted_history_stripped": stripped,
+    }
+    return item, len(body_text.encode("utf-8"))
+
+
 async def read_thread(
     gmail_service,
     thread_id: str,
