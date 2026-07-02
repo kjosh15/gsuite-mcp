@@ -997,6 +997,111 @@ async def read_paragraph_at_path(
     return await docs_ops.read_at_path(docs, file_id, path, include_children)
 
 
+@mcp.tool()
+async def read_thread(
+    thread_id: str,
+    strip_quoted_history: bool = False,
+    message_limit: Optional[int] = None,
+    cursor: Optional[str] = None,
+    max_bytes: int = 100_000,
+) -> dict[str, Any]:
+    """Read a Gmail thread with bounded pagination and optional quote-stripping.
+
+    Threads are append-only, so an offset cursor stays valid across calls; a
+    concurrent new message sets ``thread_changed: true`` and pagination
+    continues. Set ``strip_quoted_history`` to return each message's net-new
+    body only. Follow ``next_cursor`` until it is null to read the full thread.
+
+    Args:
+        thread_id: Gmail thread ID.
+        strip_quoted_history: Return only net-new body text per message.
+        message_limit: Optional max messages per page.
+        cursor: Opaque page token from a prior call.
+        max_bytes: Response body size budget (default 100000).
+    """
+    return await gmail_ops.read_thread(
+        auth.get_gmail_service(),
+        thread_id,
+        strip_quoted_history=strip_quoted_history,
+        message_limit=message_limit,
+        cursor=cursor,
+        max_bytes=max_bytes,
+    )
+
+
+@mcp.tool()
+async def read_document(
+    file_id: str,
+    fields: Optional[list[str]] = None,
+    cursor: Optional[str] = None,
+    max_bytes: int = 100_000,
+) -> dict[str, Any]:
+    """Read a Google Doc's body and/or comments with bounded pagination.
+
+    ``fields`` selects the subset to return: ``["body"]``, ``["comments"]``, or
+    both; omit for both. Body is paginated by structural element — follow
+    ``next_cursor`` until null. If the doc changes mid-pagination the call
+    returns ``STALE_CURSOR`` (restart from the beginning) rather than risk
+    skipped/duplicated content.
+
+    Args:
+        file_id: Google Drive file ID of a native Google Doc.
+        fields: Subset of ["body", "comments"]. Omit for both.
+        cursor: Opaque page token from a prior call.
+        max_bytes: Body size budget (default 100000).
+
+    Only works on Google Docs (mimeType application/vnd.google-apps.document).
+    """
+    valid_fields = {"body", "comments"}
+    if fields is not None and (not fields or set(fields) - valid_fields):
+        return {
+            "error": "INVALID_FIELDS",
+            "retryable": False,
+            "message": f"fields must be a non-empty subset of {sorted(valid_fields)}.",
+        }
+
+    drive = auth.get_drive_service()
+    meta = await asyncio.to_thread(
+        lambda: drive.files()
+        .get(fileId=file_id, fields="mimeType,trashed,trashedTime")
+        .execute()
+    )
+    if meta.get("mimeType") != GOOGLE_DOC_MIME:
+        return {
+            "error": "NOT_A_GOOGLE_DOC",
+            "retryable": False,
+            "message": (
+                f"read_document only works on Google Docs. "
+                f"This file is {meta.get('mimeType')}."
+            ),
+        }
+
+    want_body = fields is None or "body" in fields
+    want_comments = fields is None or "comments" in fields
+
+    result: dict[str, Any] = {"file_id": file_id}
+    if meta.get("trashed"):
+        result["trashed"] = True
+        result["trashed_time"] = meta.get("trashedTime")
+
+    if want_body:
+        body = await docs_ops.read_document_body(
+            auth.get_docs_service(), file_id, cursor=cursor, max_bytes=max_bytes
+        )
+        if body.get("error"):
+            return body
+        result.update(body)
+    else:
+        result["truncated"] = False
+        result["next_cursor"] = None
+
+    if want_comments:
+        comments = await drive_ops.list_comments(drive, file_id, include_resolved=True)
+        result["comments"] = comments["comments"]
+
+    return result
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
