@@ -1079,6 +1079,19 @@ async def read_document(
     want_body = fields is None or "body" in fields
     want_comments = fields is None or "comments" in fields
 
+    # A cursor paginates the body only. A comments-only request has nothing to
+    # paginate, so a cursor there is a caller error — reject it explicitly
+    # rather than silently discarding it.
+    if not want_body and cursor is not None:
+        return {
+            "error": "INVALID_CURSOR",
+            "retryable": False,
+            "message": (
+                "A cursor applies only to body reads; "
+                "comments-only requests are not paginated."
+            ),
+        }
+
     result: dict[str, Any] = {"file_id": file_id}
     if meta.get("trashed"):
         result["trashed"] = True
@@ -1095,7 +1108,10 @@ async def read_document(
         result["truncated"] = False
         result["next_cursor"] = None
 
-    if want_comments:
+    # Comments are unchanging across body pages, so return them on the first
+    # page only (cursor is None). Later body pages omit them to avoid re-sending
+    # the same list every page.
+    if want_comments and cursor is None:
         comments = await drive_ops.list_comments(drive, file_id, include_resolved=True)
         result["comments"] = comments["comments"]
         result["comments_truncated"] = bool(comments.get("has_more"))
