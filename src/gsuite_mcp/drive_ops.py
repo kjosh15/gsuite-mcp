@@ -180,8 +180,9 @@ async def list_comments(
         .list(
             fileId=file_id,
             includeDeleted=False,
+            pageSize=100,
             fields=(
-                "comments(id,content,createdTime,author,resolved,anchor,"
+                "nextPageToken,comments(id,content,createdTime,author,resolved,anchor,"
                 "replies(id,content,createdTime,author))"
             ),
         )
@@ -190,6 +191,7 @@ async def list_comments(
     comments = resp.get("comments", [])
     if not include_resolved:
         comments = [c for c in comments if not c.get("resolved", False)]
+    has_more = bool(resp.get("nextPageToken"))
     return {
         "comments": [
             {
@@ -210,7 +212,8 @@ async def list_comments(
                 ],
             }
             for c in comments
-        ]
+        ],
+        "has_more": has_more,
     }
 
 
