@@ -51,3 +51,15 @@ def test_html_to_text_cuts_at_gmail_quote():
 def test_html_to_text_strips_tags_and_entities():
     html = "<p>Hello&nbsp;&amp; welcome</p>"
     assert gmail_quotes.html_to_text(html).strip() == "Hello & welcome"
+
+
+def test_strips_forwarded_message_marker():
+    text = (
+        "My note.\n\n"
+        "---------- Forwarded message ---------\n"
+        "From: Bob\n"
+        "older"
+    )
+    net, stripped = gmail_quotes.strip_quoted_history(text)
+    assert stripped is True
+    assert net == "My note."
