@@ -106,6 +106,126 @@ async def create_reply_draft(
     }
 
 
+def _decode_part(data: str) -> str:
+    """Base64url-decode a Gmail message part body, tolerating missing padding."""
+    if not data:
+        return ""
+    padded = data + "=" * (-len(data) % 4)
+    return base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8", errors="replace")
+
+
+def _extract_plain_and_html(payload: dict) -> tuple[str, str]:
+    """Walk a message payload's MIME tree; return (plain_text, html_text)."""
+    mime = payload.get("mimeType", "")
+    data = payload.get("body", {}).get("data", "")
+    if mime == "text/plain":
+        return _decode_part(data), ""
+    if mime == "text/html":
+        return "", _decode_part(data)
+    plain, html = "", ""
+    for part in payload.get("parts", []):
+        p, h = _extract_plain_and_html(part)
+        plain = plain or p
+        html = html or h
+    return plain, html
+
+
+def _message_body(payload: dict, strip_quotes: bool) -> tuple[str, bool]:
+    """Return (body_text, quoted_history_stripped) for one message payload."""
+    plain, html = _extract_plain_and_html(payload)
+    text = plain if plain else gmail_quotes.html_to_text(html)
+    if strip_quotes:
+        return gmail_quotes.strip_quoted_history(text)
+    return text, False
+
+
+async def read_thread(
+    gmail_service,
+    thread_id: str,
+    strip_quoted_history: bool = False,
+    message_limit: int | None = None,
+    cursor: str | None = None,
+    max_bytes: int = 100_000,
+) -> dict[str, Any]:
+    """Read a Gmail thread with bounded, cursor-based pagination.
+
+    Threads are append-only: existing messages never change, so an offset
+    cursor stays valid. If new messages arrived since the cursor was issued
+    the response sets ``thread_changed: true`` and continues.
+
+    Args:
+        gmail_service: Authenticated Gmail API service object.
+        thread_id: Gmail thread ID.
+        strip_quoted_history: When True, return only each message's net-new
+            body text; each message reports ``quoted_history_stripped``.
+        message_limit: Optional max messages per page (in addition to max_bytes).
+        cursor: Opaque page token from a prior call.
+        max_bytes: Response body size budget (default 100_000).
+
+    Returns:
+        dict with thread_id, messages, truncated, next_cursor, thread_changed;
+        or an INVALID_CURSOR error dict.
+    """
+    thread = await asyncio.to_thread(
+        lambda: gmail_service.users()
+        .threads()
+        .get(userId="me", id=thread_id, format="full")
+        .execute()
+    )
+    messages = thread.get("messages", [])
+    history_id = thread.get("historyId", "")
+
+    start = 0
+    prev_history = None
+    if cursor is not None:
+        try:
+            payload = pagination.decode_cursor(cursor)
+        except ValueError:
+            return {
+                "error": "INVALID_CURSOR",
+                "retryable": False,
+                "message": "Cursor is malformed or unrecognized.",
+            }
+        start = int(payload.get("offset", 0))
+        prev_history = payload.get("history_id")
+
+    built: list[dict[str, Any]] = []
+    sizes: list[int] = []
+    for msg in messages:
+        payload_ = msg.get("payload", {})
+        headers = payload_.get("headers", [])
+        body_text, stripped = _message_body(payload_, strip_quoted_history)
+        built.append({
+            "id": msg.get("id", ""),
+            "from": _get_header(headers, "From"),
+            "to": _get_header(headers, "To"),
+            "date": _get_header(headers, "Date"),
+            "subject": _get_header(headers, "Subject"),
+            "body": body_text,
+            "quoted_history_stripped": stripped,
+        })
+        sizes.append(len(body_text.encode("utf-8")))
+
+    limit = message_limit if (message_limit is None or message_limit >= 1) else 1
+    end = pagination.take_within_budget(sizes, start, max_bytes, hard_limit=limit)
+    truncated = end < len(built)
+    next_cursor = (
+        pagination.encode_cursor(
+            {"kind": "thread", "offset": end, "history_id": history_id}
+        )
+        if truncated
+        else None
+    )
+
+    return {
+        "thread_id": thread_id,
+        "messages": built[start:end],
+        "truncated": truncated,
+        "next_cursor": next_cursor,
+        "thread_changed": prev_history is not None and prev_history != history_id,
+    }
+
+
 _SELF_ADDRESS = "josh@josh.is"
 
 
