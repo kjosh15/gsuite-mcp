@@ -1098,6 +1098,7 @@ async def read_document(
     if want_comments:
         comments = await drive_ops.list_comments(drive, file_id, include_resolved=True)
         result["comments"] = comments["comments"]
+        result["comments_truncated"] = bool(comments.get("has_more"))
 
     return result
 
