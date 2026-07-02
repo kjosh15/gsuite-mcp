@@ -118,3 +118,67 @@ async def test_tool_read_document_invalid_fields(monkeypatch):
     monkeypatch.setattr(server.auth, "get_drive_service", lambda: _meta_service("application/vnd.google-apps.document"))
     result = await server.read_document(file_id="d1", fields=["bogus"])
     assert result["error"] == "INVALID_FIELDS"
+
+
+@pytest.mark.asyncio
+async def test_tool_read_document_comments_truncated_flag(monkeypatch):
+    from gsuite_mcp import server
+
+    drive_svc = _meta_service("application/vnd.google-apps.document")
+    drive_svc.comments().list.return_value.execute.return_value = {
+        "nextPageToken": "abc123",
+        "comments": [],
+    }
+    monkeypatch.setattr(server.auth, "get_drive_service", lambda: drive_svc)
+
+    result = await server.read_document(file_id="d1", fields=["comments"])
+    assert result["comments_truncated"] is True
+
+
+@pytest.mark.asyncio
+async def test_tool_read_document_trashed_passthrough(monkeypatch):
+    from gsuite_mcp import server
+
+    drive_svc = MagicMock()
+    get = MagicMock()
+    get.execute.return_value = {
+        "mimeType": "application/vnd.google-apps.document",
+        "trashed": True,
+        "trashedTime": "2026-07-01T00:00:00Z",
+    }
+    drive_svc.files().get.return_value = get
+    drive_svc.comments().list.return_value.execute.return_value = {"comments": []}
+    monkeypatch.setattr(server.auth, "get_drive_service", lambda: drive_svc)
+    monkeypatch.setattr(server.auth, "get_docs_service", lambda: _service(_doc(["Body\n"])))
+
+    result = await server.read_document(file_id="d1")
+    assert result["trashed"] is True
+    assert result["trashed_time"] == "2026-07-01T00:00:00Z"
+
+
+@pytest.mark.asyncio
+async def test_tool_read_document_comments_only_omits_body(monkeypatch):
+    from gsuite_mcp import server
+
+    drive_svc = _meta_service("application/vnd.google-apps.document")
+    drive_svc.comments().list.return_value.execute.return_value = {"comments": []}
+    monkeypatch.setattr(server.auth, "get_drive_service", lambda: drive_svc)
+
+    result = await server.read_document(file_id="d1", fields=["comments"])
+    assert "body" not in result
+    assert result["truncated"] is False
+    assert result["next_cursor"] is None
+    assert "comments" in result
+
+
+@pytest.mark.asyncio
+async def test_tool_read_document_stale_cursor_no_comments(monkeypatch):
+    from gsuite_mcp import server
+
+    monkeypatch.setattr(server.auth, "get_drive_service", lambda: _meta_service("application/vnd.google-apps.document"))
+    monkeypatch.setattr(server.auth, "get_docs_service", lambda: _service(_doc(["Alpha\n"], revision="rev2")))
+
+    stale = pagination.encode_cursor({"kind": "doc", "offset": 1, "revision_id": "rev1"})
+    result = await server.read_document(file_id="d1", cursor=stale)
+    assert result["error"] == "STALE_CURSOR"
+    assert "comments" not in result
