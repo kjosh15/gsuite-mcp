@@ -113,3 +113,36 @@ async def test_invalid_offset_cursor_returns_error():
     bad_type = pagination.encode_cursor({"kind": "thread", "offset": "nope", "history_id": "100"})
     assert (await gmail_ops.read_thread(svc, "t1", cursor=bad_neg))["error"] == "INVALID_CURSOR"
     assert (await gmail_ops.read_thread(svc, "t1", cursor=bad_type))["error"] == "INVALID_CURSOR"
+
+
+@pytest.mark.asyncio
+async def test_only_page_messages_are_processed(monkeypatch):
+    # 4 messages, 60-byte bodies, budget 100 -> 1 message per page. Returning
+    # page 1 must NOT decode/quote-strip the whole thread (avoids the O(N^2)
+    # walk): only the returned message plus the one budget-probe message.
+    msgs = [_msg(f"m{i}", "a@x.com", "x" * 60) for i in range(4)]
+    svc = _service(msgs)
+
+    calls = {"n": 0}
+    real = gmail_ops._message_body
+
+    def counting(payload, strip):
+        calls["n"] += 1
+        return real(payload, strip)
+
+    monkeypatch.setattr(gmail_ops, "_message_body", counting)
+
+    page1 = await gmail_ops.read_thread(svc, "t1", max_bytes=100)
+    assert len(page1["messages"]) == 1
+    assert calls["n"] == 2  # m0 (returned) + m1 (budget probe); never m2/m3
+
+
+@pytest.mark.asyncio
+async def test_oversized_first_message_still_returned():
+    # Two 200-byte messages, tiny budget: page 1 must still hold exactly one
+    # (forward progress) and report truncation.
+    msgs = [_msg("m0", "a@x.com", "y" * 200), _msg("m1", "b@x.com", "z" * 200)]
+    svc = _service(msgs)
+    page1 = await gmail_ops.read_thread(svc, "t1", max_bytes=50)
+    assert [m["id"] for m in page1["messages"]] == ["m0"]
+    assert page1["truncated"] is True
