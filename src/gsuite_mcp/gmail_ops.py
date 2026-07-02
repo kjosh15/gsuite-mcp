@@ -180,13 +180,13 @@ async def read_thread(
     if cursor is not None:
         try:
             payload = pagination.decode_cursor(cursor)
+            start = pagination.offset_from(payload, len(messages))
         except ValueError:
             return {
                 "error": "INVALID_CURSOR",
                 "retryable": False,
                 "message": "Cursor is malformed or unrecognized.",
             }
-        start = int(payload.get("offset", 0))
         prev_history = payload.get("history_id")
 
     built: list[dict[str, Any]] = []
