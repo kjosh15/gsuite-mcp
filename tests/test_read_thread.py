@@ -103,3 +103,13 @@ async def test_malformed_cursor_returns_error():
     svc = _service([_msg("m1", "a@x.com", "hi")])
     result = await gmail_ops.read_thread(svc, "t1", cursor="garbage!!!")
     assert result["error"] == "INVALID_CURSOR"
+
+
+@pytest.mark.asyncio
+async def test_invalid_offset_cursor_returns_error():
+    svc = _service([_msg("m1", "a@x.com", "hi"), _msg("m2", "b@x.com", "yo")])
+    # decodable cursor, valid version, but offset is out of range / wrong type
+    bad_neg = pagination.encode_cursor({"kind": "thread", "offset": -1, "history_id": "100"})
+    bad_type = pagination.encode_cursor({"kind": "thread", "offset": "nope", "history_id": "100"})
+    assert (await gmail_ops.read_thread(svc, "t1", cursor=bad_neg))["error"] == "INVALID_CURSOR"
+    assert (await gmail_ops.read_thread(svc, "t1", cursor=bad_type))["error"] == "INVALID_CURSOR"
