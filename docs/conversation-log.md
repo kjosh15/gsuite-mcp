@@ -422,3 +422,14 @@ docs/conversation-log.md
 
 ### Files Modified:
 ```
+CLAUDE.md
+docs/conversation-log.md
+```
+
+### Recent Commits:
+```
+bc76bed 📝 Claude session #26: 2026-07-02 09:20:55
+e14abc9 🤖 Claude: session-end uncommitted changes
+2aacb6c 📝 Claude session #25: 2026-07-02 09:20:49
+```
+
