@@ -103,3 +103,24 @@ async def test_manage_comments_invalid_action(mock_drive):
     from gsuite_mcp.server import manage_comments
     result = await manage_comments(file_id="f1", action="nonsense")
     assert result["error"] == "INVALID_ACTION"
+
+
+@pytest.mark.asyncio
+async def test_list_comments_has_more_true_when_next_page_token_present(mock_drive):
+    mock_drive.comments().list.return_value.execute.return_value = {
+        "nextPageToken": "abc123",
+        "comments": [],
+    }
+    from gsuite_mcp.drive_ops import list_comments
+    result = await list_comments(mock_drive, "f1", include_resolved=True)
+    assert result["has_more"] is True
+
+
+@pytest.mark.asyncio
+async def test_list_comments_has_more_false_when_no_next_page_token(mock_drive):
+    mock_drive.comments().list.return_value.execute.return_value = {
+        "comments": [],
+    }
+    from gsuite_mcp.drive_ops import list_comments
+    result = await list_comments(mock_drive, "f1", include_resolved=True)
+    assert result["has_more"] is False
