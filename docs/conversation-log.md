@@ -454,3 +454,14 @@ bc76bed 📝 Claude session #26: 2026-07-02 09:20:55
 
 ### Files Modified:
 ```
+CLAUDE.md
+docs/conversation-log.md
+```
+
+### Recent Commits:
+```
+0d10f05 📝 Claude session #28: 2026-07-02 09:21:07
+9345878 🤖 Claude: session-end uncommitted changes
+2794c59 📝 Claude session #27: 2026-07-02 09:21:00
+```
+
