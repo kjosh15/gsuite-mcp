@@ -91,7 +91,8 @@ Optional:
 - `gdoc_batch_replace` requires `GDOC_REVIEW_DOC_IDS` to be set — fails-closed with `DENYLIST_NOT_CONFIGURED` if unset or empty. This is the safety guarantee for in-place edits: hand-review docs are walled off by the denylist.
 - **Blast-radius guard** on `replace_section` and `gdoc_batch_replace`: large deletions (delta > `BLAST_RADIUS_MIN_DELTA` AND ratio > `BLAST_RADIUS_MAX_RATIO`) are refused with `BLAST_RADIUS_EXCEEDED`. Pass `confirm_delete_chars=<N>` to proceed. Confirmed blast-radius trips auto-create a backup copy before executing (returned as `backup_file_id`).
 - `read_thread`/`read_document` never truncate silently — every response carries `truncated` + `next_cursor`; Docs pagination returns `STALE_CURSOR` when the doc changes mid-read, Gmail sets `thread_changed` and continues (threads are append-only).
-- `read_document` comment projection fetches the first Drive comments page (pageSize 100) and sets an explicit `comments_truncated: true` when more exist; following the comment page token (full comment pagination) is out of scope for v1.
+- `read_document` comment projection fetches the first Drive comments page (pageSize 100) and sets an explicit `comments_truncated: true` when more exist; following the comment page token (full comment pagination) is out of scope for v1. Comments are returned on the first read page only (`cursor is None`); later body pages omit them (the list doesn't change across pages). A `cursor` passed to a comments-only request (`fields=["comments"]`) returns `INVALID_CURSOR` — cursors paginate the body only.
+- `read_thread` decodes/quote-strips only the messages on the returned page (lazy walk from the cursor offset), so a full paginated walk is O(N) total, not O(N²).
 
 ## Session Tracking
 Total Claude sessions: 29
