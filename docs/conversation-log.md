@@ -536,3 +536,12 @@ docs/conversation-log.md
 ```
 CLAUDE.md
 docs/conversation-log.md
+```
+
+### Recent Commits:
+```
+a478ed7 📝 Claude session #33: 2026-07-07 10:14:04
+3a2254f 🤖 Claude: session-end uncommitted changes
+8efb794 📝 Claude session #32: 2026-07-04 12:19:17
+```
+
