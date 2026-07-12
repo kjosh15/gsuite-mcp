@@ -53,7 +53,7 @@ def _find_spans(content: str, find: str, match_case: bool, regex: bool) -> list[
         if idx == -1:
             break
         spans.append((idx, idx + len(find)))
-        idx += 1
+        idx += len(find) or 1
     return spans
 
 

@@ -106,6 +106,12 @@ class TestCountAndApplyReplace:
     def test_apply_replace_no_match_returns_unchanged(self):
         assert text_ops.apply_replace("hello", "xyz", "abc") == "hello"
 
+    def test_count_matches_no_overlap_on_self_overlapping_pattern(self):
+        assert text_ops.count_matches("aaaa", "aa") == 2
+
+    def test_apply_replace_no_overlap_on_self_overlapping_pattern(self):
+        assert text_ops.apply_replace("aaaa", "aa", "b") == "bb"
+
 
 class TestApplyBatch:
     def test_single_edit_applies(self):
