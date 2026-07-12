@@ -129,3 +129,17 @@ async def test_untrash_file():
     assert result["trashed"] is False
     call_args = svc.files().update.call_args
     assert call_args.kwargs["body"] == {"trashed": False}
+
+
+# -------------------------------------------------------------------
+# download_file_bytes
+# -------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_download_file_bytes_returns_raw_bytes():
+    svc = MagicMock()
+    svc.files().get_media.return_value.execute.return_value = b"raw file content"
+    result = await drive_ops.download_file_bytes(svc, "f1")
+    assert result == b"raw file content"
+    svc.files().get_media.assert_called_with(fileId="f1")

@@ -41,6 +41,17 @@ async def download_file(
     return result
 
 
+async def download_file_bytes(service, file_id: str) -> bytes:
+    """Download raw file bytes via get_media.
+
+    Thin wrapper for callers that need raw bytes directly rather than
+    download_file's base64-wrapped, metadata-carrying result.
+    """
+    return await asyncio.to_thread(
+        lambda: service.files().get_media(fileId=file_id).execute()
+    )
+
+
 async def upload_file(
     service,
     content_base64: str,

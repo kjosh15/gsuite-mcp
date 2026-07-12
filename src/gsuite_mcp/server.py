@@ -154,9 +154,7 @@ async def append_to_file(
         modified_time = meta2.get("modifiedTime", "")
     else:
         # Plain file: download, concat, upload
-        current = await asyncio.to_thread(
-            lambda: drive.files().get_media(fileId=file_id).execute()
-        )
+        current = await drive_ops.download_file_bytes(drive, file_id)
         to_append = (separator + content).encode("utf-8")
         new_bytes = current + to_append
         import base64 as _b64
