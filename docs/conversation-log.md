@@ -641,3 +641,20 @@ docs/conversation-log.md
 f6bdfe7 Add text_ops MIME allowlist, line-ending, and UTF-8 encode/decode helpers
 ```
 
+
+## Session: 2026-07-12 10:27:15
+
+### Files Modified:
+```
+docs/conversation-log.md
+src/gsuite_mcp/text_ops.py
+tests/test_text_ops.py
+```
+
+### Recent Commits:
+```
+93151e1 Add text_ops matching and sequential all-or-nothing batch-apply
+aadb7a1 Drop text_ops.py ALWAYS_BACKUP_ON_WRITE constant not yet used (deferred to Task 5)
+22eb31b 📝 Claude session #40: 2026-07-12 10:18:58
+```
+
