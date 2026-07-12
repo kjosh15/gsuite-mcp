@@ -674,3 +674,20 @@ docs/conversation-log.md
 aadb7a1 Drop text_ops.py ALWAYS_BACKUP_ON_WRITE constant not yet used (deferred to Task 5)
 ```
 
+
+## Session: 2026-07-12 10:32:57
+
+### Files Modified:
+```
+docs/conversation-log.md
+src/gsuite_mcp/text_ops.py
+tests/test_text_ops.py
+```
+
+### Recent Commits:
+```
+7c57a74 Fix _find_spans to skip past full match, preventing overlapping-match corruption
+7b4dbc0 📝 Claude session #42: 2026-07-12 10:28:00
+77900a5 📝 Claude session #41: 2026-07-12 10:27:15
+```
+
