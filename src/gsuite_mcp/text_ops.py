@@ -1,12 +1,6 @@
-"""Plain-text Drive file editing — matching, decoding, and the read-match-write core."""
+"""Plain-text Drive file editing utilities — MIME detection, line-ending normalization, and UTF-8 encode/decode."""
 
-import asyncio
-import base64
-import re
 from typing import Any
-
-from gsuite_mcp import drive_ops
-from gsuite_mcp.docs_ops import check_blast_radius
 
 MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
 
