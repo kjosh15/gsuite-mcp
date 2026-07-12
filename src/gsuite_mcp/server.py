@@ -941,6 +941,97 @@ async def text_replace(
 
 
 @mcp.tool()
+async def text_batch_replace(
+    file_id: str,
+    edits: list[dict[str, Any]],
+    dry_run: bool = False,
+    confirm_delete_chars: Optional[int] = None,
+) -> dict[str, Any]:
+    """Apply multiple find/replace edits to a plain-text Drive file in one roundtrip.
+
+    One download, one edit pass, one upload — regardless of edit count. This
+    is the tool for multi-edit changes to files too large to safely
+    round-trip through upload_file's base64 payload: instead of transmitting
+    the whole file, send only the find/replace pairs.
+
+    Each edit: {find: str, replace: str, expected_count?: int, match_case?:
+    bool, regex?: bool}. Edits apply sequentially in array order — edit N
+    sees the result of edits 1..N-1 (same contract as gdoc_batch_replace).
+    All-or-nothing: if any edit's expected_count doesn't match, the entire
+    batch aborts before any write; BATCH_ABORTED names the failing edit's
+    index (failed_edit_index) and its actual match count.
+
+    dry_run=True returns per-edit match counts without writing.
+
+    Large deletions trip a blast-radius guard (BLAST_RADIUS_EXCEEDED); pass
+    confirm_delete_chars=<chars_deleted> from the error to proceed. Every
+    successful write auto-snapshots a backup copy before writing; a
+    confirmed blast-radius override does the same.
+
+    Detects concurrent edits: if the file changed between read and write,
+    returns CONCURRENT_MODIFICATION and writes nothing.
+
+    Refuses trashed files (TRASHED_FILE), non-UTF-8 files (NOT_TEXT_FILE),
+    unsupported MIME types (UNSUPPORTED_MIME), and files over 5MB
+    (FILE_TOO_LARGE)."""
+    if not edits:
+        return {
+            "error": "INVALID_INPUT",
+            "retryable": False,
+            "message": "edits array must not be empty.",
+        }
+    for i, edit in enumerate(edits):
+        if "find" not in edit or "replace" not in edit:
+            return {
+                "error": "INVALID_INPUT",
+                "retryable": False,
+                "message": (
+                    f"Edit at index {i} missing required field(s). "
+                    f"Each edit must have 'find' and 'replace'."
+                ),
+            }
+
+    drive = auth.get_drive_service()
+    meta = await asyncio.to_thread(
+        lambda: drive.files()
+        .get(
+            fileId=file_id,
+            fields="name,mimeType,size,modifiedTime,md5Checksum,trashed,trashedTime",
+        )
+        .execute()
+    )
+    if meta.get("trashed"):
+        return _trashed_error(file_id, meta)
+
+    try:
+        blast_min_delta = int(os.environ.get("BLAST_RADIUS_MIN_DELTA", "200"))
+        blast_max_ratio = float(os.environ.get("BLAST_RADIUS_MAX_RATIO", "2"))
+        result = await text_ops.apply_edits_to_file(
+            drive, file_id, meta, edits=edits,
+            dry_run=dry_run,
+            confirm_delete_chars=confirm_delete_chars,
+            blast_min_delta=blast_min_delta,
+            blast_max_ratio=blast_max_ratio,
+            backup_folder_id=os.environ.get("BACKUP_FOLDER_ID"),
+        )
+        if "error" not in result:
+            result["file_id"] = file_id
+            result["file_name"] = meta.get("name", "")
+            result["mime_type"] = meta.get("mimeType", "")
+        return result
+    except HttpError as exc:
+        status = exc.resp.status if exc.resp else 0
+        return {
+            "error": "GOOGLE_API_ERROR",
+            "retryable": status in TRANSIENT_CODES,
+            "http_status": status,
+            "message": (
+                f"Google Drive API error (HTTP {status}) after retries: {exc}"
+            ),
+        }
+
+
+@mcp.tool()
 async def trash_file(file_id: str) -> dict[str, Any]:
     """Move a file to Drive trash. Reversible within 30 days via untrash_file."""
     try:
