@@ -691,3 +691,20 @@ tests/test_text_ops.py
 77900a5 📝 Claude session #41: 2026-07-12 10:27:15
 ```
 
+
+## Session: 2026-07-12 10:43:21
+
+### Files Modified:
+```
+docs/conversation-log.md
+src/gsuite_mcp/server.py
+tests/test_text_replace.py
+```
+
+### Recent Commits:
+```
+73f1faf Add text_replace tool for surgical plain-text Drive file edits
+9e1ddb1 Add text_ops.apply_edits_to_file: guarded read-match-write core
+facac72 📝 Claude session #43: 2026-07-12 10:32:57
+```
+
