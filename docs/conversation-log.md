@@ -658,3 +658,19 @@ aadb7a1 Drop text_ops.py ALWAYS_BACKUP_ON_WRITE constant not yet used (deferred 
 22eb31b 📝 Claude session #40: 2026-07-12 10:18:58
 ```
 
+
+## Session: 2026-07-12 10:28:00
+
+### Files Modified:
+```
+CLAUDE.md
+docs/conversation-log.md
+```
+
+### Recent Commits:
+```
+77900a5 📝 Claude session #41: 2026-07-12 10:27:15
+93151e1 Add text_ops matching and sequential all-or-nothing batch-apply
+aadb7a1 Drop text_ops.py ALWAYS_BACKUP_ON_WRITE constant not yet used (deferred to Task 5)
+```
+
