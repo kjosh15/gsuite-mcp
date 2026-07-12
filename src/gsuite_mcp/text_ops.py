@@ -1,12 +1,23 @@
 """Plain-text Drive file editing utilities — MIME detection, line-ending normalization, and UTF-8 encode/decode."""
 
+import asyncio
+import base64
 import re
 from typing import Any
+
+from gsuite_mcp import drive_ops
+from gsuite_mcp.docs_ops import check_blast_radius
 
 MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
 
 ALLOWED_EXACT_MIME_TYPES: set[str] = {"application/json", "application/x-yaml"}
 GOOGLE_APPS_MIME_PREFIX = "application/vnd.google-apps."
+
+# Safe default from the Task 1 design spike: every write through
+# apply_edits_to_file creates a backup copy first, not just confirmed
+# blast-radius trips. No live-credential testing was available to validate
+# a narrower policy, so this ships conservative.
+ALWAYS_BACKUP_ON_WRITE = True
 
 
 def is_supported_mime(mime_type: str) -> bool:
@@ -136,3 +147,179 @@ def apply_batch(content: str, edits: list[dict[str, Any]]) -> dict[str, Any]:
         "chars_deleted": total_deleted,
         "chars_inserted": total_inserted,
     }
+
+
+async def apply_edits_to_file(
+    drive_service,
+    file_id: str,
+    meta: dict[str, Any],
+    edits: list[dict[str, Any]],
+    *,
+    dry_run: bool = False,
+    confirm_delete_chars: int | None = None,
+    blast_min_delta: int = 200,
+    blast_max_ratio: float = 2.0,
+    backup_folder_id: str | None = None,
+) -> dict[str, Any]:
+    """Shared read-match-guard-write core for text_replace/text_batch_replace.
+
+    meta must already carry mimeType, size, modifiedTime, md5Checksum, name
+    from a fresh files().get() call by the caller; the caller also performs
+    the TRASHED_FILE check before calling this. Every error path below
+    returns before any write occurs.
+    """
+    mime_type = meta.get("mimeType", "")
+    if not is_supported_mime(mime_type):
+        message = (
+            "text_replace/text_batch_replace only work on plain-text files "
+            "(text/*, application/json, application/x-yaml). This file is "
+            f"{mime_type}."
+        )
+        if is_google_apps_mime(mime_type):
+            message += " For Google Docs, use replace_text or gdoc_batch_replace."
+        return {"error": "UNSUPPORTED_MIME", "retryable": False, "message": message}
+
+    size = int(meta.get("size") or 0)
+    if size > MAX_FILE_SIZE_BYTES:
+        return {
+            "error": "FILE_TOO_LARGE",
+            "retryable": False,
+            "size_bytes": size,
+            "message": (
+                f"File is {size} bytes; text_replace/text_batch_replace refuse "
+                f"files over {MAX_FILE_SIZE_BYTES} bytes."
+            ),
+        }
+
+    raw = await drive_ops.download_file_bytes(drive_service, file_id)
+    try:
+        decoded = decode_text(raw)
+    except UnicodeDecodeError:
+        return {
+            "error": "NOT_TEXT_FILE",
+            "retryable": False,
+            "message": "File content is not valid UTF-8 text.",
+        }
+
+    batch_result = apply_batch(decoded["text"], edits)
+    per_edit = batch_result["per_edit"]
+
+    if batch_result["aborted_at"] is not None:
+        failed = per_edit[-1]
+        if len(edits) > 1:
+            error_code = "BATCH_ABORTED"
+        elif failed["matches_found"] == 0:
+            error_code = "NO_MATCH"
+        else:
+            error_code = "COUNT_MISMATCH"
+        return {
+            "error": error_code,
+            "retryable": True,
+            "failed_edit_index": failed["index"],
+            "matches_found": failed["matches_found"],
+            "per_edit": per_edit,
+            "message": (
+                f"Edit {failed['index']} ('{failed['find_preview']}') expected "
+                f"{edits[failed['index']].get('expected_count')} match(es) but "
+                f"found {failed['matches_found']}. No changes made."
+            ),
+        }
+
+    new_text = batch_result["content"]
+    chars_deleted = batch_result["chars_deleted"]
+    chars_inserted = batch_result["chars_inserted"]
+
+    if dry_run:
+        return {
+            "dry_run": True,
+            "matches_found": per_edit[0]["matches_found"] if len(edits) == 1 else None,
+            "per_edit": per_edit,
+            "bytes_before": len(raw),
+            "chars_deleted": chars_deleted,
+            "chars_inserted": chars_inserted,
+            "net_change": chars_inserted - chars_deleted,
+        }
+
+    blast = check_blast_radius(
+        chars_deleted=chars_deleted,
+        chars_inserted=chars_inserted,
+        confirm_delete_chars=confirm_delete_chars,
+        min_delta=blast_min_delta,
+        max_ratio=blast_max_ratio,
+    )
+    if blast is not None:
+        blast["per_edit"] = per_edit
+        return blast
+
+    backup_file_id = None
+    backup_file_name = None
+    if confirm_delete_chars is not None or ALWAYS_BACKUP_ON_WRITE:
+        backup = await drive_ops.create_backup_copy(
+            drive_service, file_id, backup_folder_id=backup_folder_id,
+        )
+        backup_file_id = backup["backup_file_id"]
+        backup_file_name = backup["backup_file_name"]
+
+    # Optimistic-concurrency check: re-fetch immediately before writing.
+    current = await asyncio.to_thread(
+        lambda: drive_service.files()
+        .get(fileId=file_id, fields="modifiedTime,md5Checksum")
+        .execute()
+    )
+    if (
+        current.get("modifiedTime") != meta.get("modifiedTime")
+        or current.get("md5Checksum") != meta.get("md5Checksum")
+    ):
+        return {
+            "error": "CONCURRENT_MODIFICATION",
+            "retryable": True,
+            "message": (
+                "File changed since it was read. Re-read the file to get "
+                "current content before retrying this edit."
+            ),
+        }
+
+    new_bytes = encode_text(new_text, decoded["line_ending"])
+
+    # Best-effort revision anchor; not all Drive files retain content
+    # revisions the way Google Docs do (see ALWAYS_BACKUP_ON_WRITE above).
+    rev_resp = await asyncio.to_thread(
+        lambda: drive_service.revisions()
+        .list(fileId=file_id, fields="revisions(id)", pageSize=1000)
+        .execute()
+    )
+    revisions = rev_resp.get("revisions", [])
+    revision_id_before = revisions[-1]["id"] if revisions else None
+
+    upload_result = await drive_ops.upload_file(
+        drive_service,
+        content_base64=base64.b64encode(new_bytes).decode(),
+        file_name=meta.get("name", ""),
+        mime_type=mime_type,
+        file_id=file_id,
+    )
+
+    rev_resp_after = await asyncio.to_thread(
+        lambda: drive_service.revisions()
+        .list(fileId=file_id, fields="revisions(id)", pageSize=1000)
+        .execute()
+    )
+    revisions_after = rev_resp_after.get("revisions", [])
+    revision_id_after = revisions_after[-1]["id"] if revisions_after else None
+
+    result: dict[str, Any] = {
+        "matches_found": per_edit[0]["matches_found"] if len(edits) == 1 else None,
+        "per_edit": per_edit,
+        "bytes_before": len(raw),
+        "bytes_after": len(new_bytes),
+        "chars_deleted": chars_deleted,
+        "chars_inserted": chars_inserted,
+        "net_change": chars_inserted - chars_deleted,
+        "revision_id_before": revision_id_before,
+        "revision_id_after": revision_id_after,
+        "modified_time": upload_result.get("modified_time", ""),
+    }
+    if backup_file_id:
+        result["backup_file_id"] = backup_file_id
+        result["backup_file_name"] = backup_file_name
+    return result
