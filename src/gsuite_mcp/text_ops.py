@@ -5,7 +5,7 @@ import base64
 import re
 from typing import Any
 
-from gsuite_mcp import drive_ops
+from gsuite_mcp import drive_ops, pagination
 from gsuite_mcp.docs_ops import check_blast_radius
 
 MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
@@ -323,3 +323,88 @@ async def apply_edits_to_file(
         result["backup_file_id"] = backup_file_id
         result["backup_file_name"] = backup_file_name
     return result
+
+
+async def read_range(
+    drive_service,
+    file_id: str,
+    meta: dict[str, Any],
+    start_line: int | None,
+    end_line: int | None,
+    max_bytes: int,
+    cursor: str | None,
+) -> dict[str, Any]:
+    """Read a bounded slice of a plain-text Drive file's lines.
+
+    cursor, when present, takes precedence over start_line/end_line and
+    continues a prior truncated read. meta must carry mimeType and size from
+    a fresh files().get() call by the caller (the caller also performs the
+    TRASHED_FILE check before calling this).
+    """
+    mime_type = meta.get("mimeType", "")
+    if not is_supported_mime(mime_type):
+        return {
+            "error": "UNSUPPORTED_MIME",
+            "retryable": False,
+            "message": (
+                "text_read_range only works on plain-text files (text/*, "
+                f"application/json, application/x-yaml). This file is {mime_type}."
+            ),
+        }
+
+    size = int(meta.get("size") or 0)
+    if size > MAX_FILE_SIZE_BYTES:
+        return {
+            "error": "FILE_TOO_LARGE",
+            "retryable": False,
+            "size_bytes": size,
+            "message": f"File is {size} bytes; text_read_range refuses files over {MAX_FILE_SIZE_BYTES} bytes.",
+        }
+
+    raw = await drive_ops.download_file_bytes(drive_service, file_id)
+    try:
+        decoded = decode_text(raw)
+    except UnicodeDecodeError:
+        return {
+            "error": "NOT_TEXT_FILE",
+            "retryable": False,
+            "message": "File content is not valid UTF-8 text.",
+        }
+
+    lines = decoded["text"].split("\n")
+    total_lines = len(lines)
+
+    if cursor is not None:
+        try:
+            payload = pagination.decode_cursor(cursor)
+            start = pagination.offset_from(payload, total_lines)
+        except ValueError:
+            return {
+                "error": "INVALID_CURSOR",
+                "retryable": False,
+                "message": "Cursor is malformed or unrecognized.",
+            }
+        hard_end = total_lines
+    elif start_line is not None or end_line is not None:
+        start = max(0, start_line or 0)
+        hard_end = total_lines if end_line is None else min(total_lines, end_line + 1)
+    else:
+        start = 0
+        hard_end = total_lines
+
+    sizes = [len(line.encode("utf-8")) + 1 for line in lines]
+    end = pagination.take_within_budget(sizes, start, max_bytes, hard_limit=hard_end - start)
+    truncated = end < total_lines
+    next_cursor = (
+        pagination.encode_cursor({"kind": "text_range", "offset": end})
+        if truncated else None
+    )
+
+    return {
+        "content": "\n".join(lines[start:end]),
+        "total_lines": total_lines,
+        "truncated": truncated,
+        "next_cursor": next_cursor,
+        "mime_type": mime_type,
+        "line_ending": decoded["line_ending"],
+    }

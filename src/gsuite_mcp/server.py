@@ -1032,6 +1032,37 @@ async def text_batch_replace(
 
 
 @mcp.tool()
+async def text_read_range(
+    file_id: str,
+    start_line: Optional[int] = None,
+    end_line: Optional[int] = None,
+    max_bytes: int = 100_000,
+    cursor: Optional[str] = None,
+) -> dict[str, Any]:
+    """Read a bounded slice of a plain-text Drive file, to build a text_replace find string.
+
+    start_line/end_line select an initial line range (0-indexed, inclusive);
+    omit both to start at the top of the file. max_bytes caps the response
+    size (default 100000) — follow the returned next_cursor in a follow-up
+    call to continue past a truncated response; cursor takes precedence over
+    start_line/end_line when both are given.
+
+    Read-only. Same MIME allowlist (text/*, application/json,
+    application/x-yaml) and 5MB size ceiling as text_replace."""
+    drive = auth.get_drive_service()
+    meta = await asyncio.to_thread(
+        lambda: drive.files()
+        .get(fileId=file_id, fields="name,mimeType,size,trashed,trashedTime")
+        .execute()
+    )
+    if meta.get("trashed"):
+        return _trashed_error(file_id, meta)
+    return await text_ops.read_range(
+        drive, file_id, meta, start_line, end_line, max_bytes, cursor,
+    )
+
+
+@mcp.tool()
 async def trash_file(file_id: str) -> dict[str, Any]:
     """Move a file to Drive trash. Reversible within 30 days via untrash_file."""
     try:
