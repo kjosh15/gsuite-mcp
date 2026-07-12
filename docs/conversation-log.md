@@ -708,3 +708,20 @@ tests/test_text_replace.py
 facac72 📝 Claude session #43: 2026-07-12 10:32:57
 ```
 
+
+## Session: 2026-07-12 10:50:45
+
+### Files Modified:
+```
+docs/conversation-log.md
+src/gsuite_mcp/server.py
+tests/test_text_batch_replace.py
+```
+
+### Recent Commits:
+```
+a27f11e Add text_batch_replace tool for atomic multi-edit plain-text file changes
+cdef5b7 📝 Claude session #44: 2026-07-12 10:43:21
+73f1faf Add text_replace tool for surgical plain-text Drive file edits
+```
+
