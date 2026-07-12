@@ -10,7 +10,7 @@ from typing import Any, Optional
 from fastmcp import FastMCP
 from googleapiclient.errors import HttpError
 
-from gsuite_mcp import auth, docs_ops, docx_edits, drive_ops, gdoc_ops, gmail_ops, sheets_ops
+from gsuite_mcp import auth, docs_ops, docx_edits, drive_ops, gdoc_ops, gmail_ops, sheets_ops, text_ops
 from gsuite_mcp.retry import TRANSIENT_CODES
 from gsuite_mcp.api_key_middleware import APIKeyMiddleware
 
@@ -856,6 +856,86 @@ async def gdoc_batch_replace(
             "http_status": status,
             "message": (
                 f"Google Docs API error (HTTP {status}) after retries: {exc}"
+            ),
+        }
+
+
+@mcp.tool()
+async def text_replace(
+    file_id: str,
+    find: str,
+    replace: str,
+    expected_count: Optional[int] = None,
+    match_case: bool = True,
+    regex: bool = False,
+    dry_run: bool = False,
+    confirm_delete_chars: Optional[int] = None,
+) -> dict[str, Any]:
+    """Surgical find/replace in a plain-text Drive file (.md, .txt, .csv, .json, .yaml).
+
+    Downloads, edits, and re-uploads server-side — the caller never needs to
+    transmit the file's full contents. Matching operates on the raw text
+    stream: newlines are ordinary characters, so multi-line find patterns
+    work naturally (unlike replace_text on Google Docs, which is
+    paragraph-bound).
+
+    expected_count is checked before any write: on mismatch, returns
+    COUNT_MISMATCH (or NO_MATCH if zero matches) with the actual count, and
+    writes nothing. dry_run=True returns matches_found without writing.
+
+    Large deletions trip a blast-radius guard (BLAST_RADIUS_EXCEEDED); pass
+    confirm_delete_chars=<chars_deleted> from the error to proceed. A
+    confirmed edit auto-snapshots a backup copy before writing.
+
+    Detects concurrent edits: if the file changed between read and write
+    (e.g. a parallel session editing the same file), returns
+    CONCURRENT_MODIFICATION and writes nothing.
+
+    Refuses trashed files (TRASHED_FILE), non-UTF-8 files (NOT_TEXT_FILE),
+    unsupported MIME types (UNSUPPORTED_MIME — Google Docs should use
+    replace_text/gdoc_batch_replace instead), and files over 5MB
+    (FILE_TOO_LARGE)."""
+    drive = auth.get_drive_service()
+    meta = await asyncio.to_thread(
+        lambda: drive.files()
+        .get(
+            fileId=file_id,
+            fields="name,mimeType,size,modifiedTime,md5Checksum,trashed,trashedTime",
+        )
+        .execute()
+    )
+    if meta.get("trashed"):
+        return _trashed_error(file_id, meta)
+
+    try:
+        blast_min_delta = int(os.environ.get("BLAST_RADIUS_MIN_DELTA", "200"))
+        blast_max_ratio = float(os.environ.get("BLAST_RADIUS_MAX_RATIO", "2"))
+        result = await text_ops.apply_edits_to_file(
+            drive, file_id, meta,
+            edits=[{
+                "find": find, "replace": replace,
+                "expected_count": expected_count,
+                "match_case": match_case, "regex": regex,
+            }],
+            dry_run=dry_run,
+            confirm_delete_chars=confirm_delete_chars,
+            blast_min_delta=blast_min_delta,
+            blast_max_ratio=blast_max_ratio,
+            backup_folder_id=os.environ.get("BACKUP_FOLDER_ID"),
+        )
+        if "error" not in result:
+            result["file_id"] = file_id
+            result["file_name"] = meta.get("name", "")
+            result["mime_type"] = meta.get("mimeType", "")
+        return result
+    except HttpError as exc:
+        status = exc.resp.status if exc.resp else 0
+        return {
+            "error": "GOOGLE_API_ERROR",
+            "retryable": status in TRANSIENT_CODES,
+            "http_status": status,
+            "message": (
+                f"Google Drive API error (HTTP {status}) after retries: {exc}"
             ),
         }
 
