@@ -7,14 +7,6 @@ MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
 ALLOWED_EXACT_MIME_TYPES: set[str] = {"application/json", "application/x-yaml"}
 GOOGLE_APPS_MIME_PREFIX = "application/vnd.google-apps."
 
-# Set from the Task 1 revisions-API spike. Drive's revisions().list() may not
-# give a reliable rollback point for plain (non-Google-native) files the way
-# it does for Google Docs. True is the safe default: every mutating call
-# snapshots a backup copy before writing, regardless of blast-radius outcome.
-# Flip to False only once the spike confirms revision IDs are a trustworthy
-# rollback path for this file type.
-ALWAYS_BACKUP_ON_WRITE = True
-
 
 def is_supported_mime(mime_type: str) -> bool:
     return mime_type.startswith("text/") or mime_type in ALLOWED_EXACT_MIME_TYPES
