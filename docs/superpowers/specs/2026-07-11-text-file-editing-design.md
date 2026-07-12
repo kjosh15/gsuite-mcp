@@ -139,6 +139,8 @@ The existing `gdoc_batch_replace` pattern fetches `revision_id_before`/`after` v
 
 This conditional is resolved once, during implementation, not re-decided per call.
 
+**Spike status (2026-07-12)**: not run. No environment used during design or implementation (interactive session shell, or the subagent dispatched for this task) had live `GOOGLE_OAUTH_CLIENT_ID`/`SECRET`/`REFRESH_TOKEN` available — there is no local `.env` in this repo and `gcloud auth` was not authenticated non-interactively. The implementation ships with the safe default from the "not reliable" branch above: `text_ops.ALWAYS_BACKUP_ON_WRITE = True`, so every mutating call snapshots a backup unconditionally. The spike script is preserved in `docs/superpowers/plans/2026-07-12-text-file-editing.md` Task 1 for whoever next has credentials available (e.g. locally with `.env` sourced, or against the deployed Cloud Run service's config) to run and, if it confirms revisions are reliable, flip the constant to `False` as a follow-up change.
+
 ## 9. Error taxonomy
 
 | Code | Meaning | Mutation occurred? |
