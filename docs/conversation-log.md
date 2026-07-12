@@ -609,3 +609,19 @@ a4a61c5 📝 Claude session #36: 2026-07-07 13:45:52
 6265363 📝 Claude session #35: 2026-07-07 13:45:50
 ```
 
+
+## Session: 2026-07-12 10:18:30
+
+### Files Modified:
+```
+docs/conversation-log.md
+src/gsuite_mcp/text_ops.py
+```
+
+### Recent Commits:
+```
+83389c8 checkpoint: end of turn (2026-07-12T10:18:30Z)
+f6bdfe7 Add text_ops MIME allowlist, line-ending, and UTF-8 encode/decode helpers
+fd41fef Add drive_ops.download_file_bytes, refactor append_to_file to use it
+```
+
