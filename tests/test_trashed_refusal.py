@@ -120,3 +120,47 @@ async def test_upload_file_create_allows_no_check(mock_drive, mock_docs):
     result = await upload_file(content, "test.txt", "text/plain")
     assert "error" not in result
     assert result["file_id"] == "new1"
+
+
+@pytest.fixture
+def trashed_text_meta():
+    """Metadata response for a trashed plain-text file."""
+    return {
+        "name": "notes.md",
+        "mimeType": "text/markdown",
+        "size": "20",
+        "modifiedTime": "2026-05-19T00:00:00Z",
+        "md5Checksum": "abc123",
+        "trashed": True,
+        "trashedTime": "2026-05-06T18:00:00Z",
+    }
+
+
+@pytest.fixture
+def mock_drive_text(trashed_text_meta):
+    with patch("gsuite_mcp.auth.get_drive_service") as mock:
+        drive = MagicMock()
+        mock.return_value = drive
+        drive.files().get.return_value.execute.return_value = trashed_text_meta
+        yield drive
+
+
+@pytest.mark.asyncio
+async def test_text_replace_refuses_trashed(mock_drive_text):
+    from gsuite_mcp.server import text_replace
+    result = await text_replace("f1", "old", "new")
+    assert result["error"] == "TRASHED_FILE"
+
+
+@pytest.mark.asyncio
+async def test_text_batch_replace_refuses_trashed(mock_drive_text):
+    from gsuite_mcp.server import text_batch_replace
+    result = await text_batch_replace("f1", [{"find": "old", "replace": "new"}])
+    assert result["error"] == "TRASHED_FILE"
+
+
+@pytest.mark.asyncio
+async def test_text_read_range_refuses_trashed(mock_drive_text):
+    from gsuite_mcp.server import text_read_range
+    result = await text_read_range("f1")
+    assert result["error"] == "TRASHED_FILE"
