@@ -30,11 +30,12 @@ uv run python -m gsuite_mcp.auth_setup
 - `src/gsuite_mcp/gdoc_ops.py` — Google Doc operations (template populate, suggest edit via .docx export, batch replace with revision IDs)
 - `src/gsuite_mcp/gmail_ops.py` — Gmail v1 operations (thread-aware draft creation, inbox delivery via messages.insert, read_thread)
 - `src/gsuite_mcp/pagination.py` — opaque cursor codec + byte-budget windowing (pure functions)
+- `src/gsuite_mcp/text_ops.py` — plain-text Drive file editing (matching, UTF-8/line-ending handling, guarded read-match-write core shared by text_replace/text_batch_replace, bounded read_range)
 - `src/gsuite_mcp/gmail_quotes.py` — quoted-history stripping + html-to-text (pure functions)
 - `src/gsuite_mcp/retry.py` — retry helper with exponential backoff for transient Google API errors (5xx, 429)
 - `src/gsuite_mcp/api_key_middleware.py` — Starlette auth middleware (bearer token or `?key=` query param)
-- `src/gsuite_mcp/server.py` — FastMCP server exposing 21 tools (refuses to start without `GSUITE_MCP_API_KEY`)
-- `tests/` — pytest suite mirroring the module split (337 tests)
+- `src/gsuite_mcp/server.py` — FastMCP server exposing 24 tools (refuses to start without `GSUITE_MCP_API_KEY`)
+- `tests/` — pytest suite mirroring the module split (406 tests)
 - `docs/DEPLOYMENT.md` — deployment runbook (Cloud Run topology, Secret Manager layout, key rotation, smoke tests, client config)
 
 ## Tools
@@ -60,6 +61,9 @@ uv run python -m gsuite_mcp.auth_setup
 19. `deliver_to_inbox` — insert a message into the authenticated user's own Gmail inbox via `messages.insert` (NOT send). From/To hard-coded to `josh@josh.is`. Inputs: `subject`, `body`, `content_type`. Cannot email third parties. (in-place, atomic, cross-paragraph, count verification, dry-run, review-doc denylist). Edits default to `expected_count: 1` (breaking: pass explicit count for multi-match). Supports `confirm_delete_chars` for blast-radius guard bypass. Returns aggregate `chars_deleted`, `chars_inserted`, `net_change`.
 20. `read_thread` — bounded Gmail thread read: strip_quoted_history, message_limit/cursor pagination, never-silent truncation (truncated + next_cursor), thread_changed flag on append.
 21. `read_document` — bounded Google Doc read: fields projection (["body"]/["comments"]/both), structural-element pagination, STALE_CURSOR on mid-pagination edits.
+22. `text_replace` — surgical find/replace in a plain-text Drive file (.md/.txt/.csv/.json/.yaml), server-side roundtrip (no base64 payload from caller). `expected_count` checked pre-write, `dry_run`, blast-radius guard + autobackup, optimistic-concurrency check, CRLF-preserving.
+23. `text_batch_replace` — atomic multi-edit version of `text_replace`: one download/upload for N sequential find/replace pairs (edit N sees edit N-1's result), all-or-nothing on any `expected_count` mismatch.
+24. `text_read_range` — bounded line-range read of a plain-text Drive file, for building `text_replace`/`text_batch_replace` find strings without downloading the whole file.
 
 ## Environment Variables
 
@@ -93,6 +97,9 @@ Optional:
 - `read_thread`/`read_document` never truncate silently — every response carries `truncated` + `next_cursor`; Docs pagination returns `STALE_CURSOR` when the doc changes mid-read, Gmail sets `thread_changed` and continues (threads are append-only).
 - `read_document` comment projection fetches the first Drive comments page (pageSize 100) and sets an explicit `comments_truncated: true` when more exist; following the comment page token (full comment pagination) is out of scope for v1. Comments are returned on the first read page only (`cursor is None`); later body pages omit them (the list doesn't change across pages). A `cursor` passed to a comments-only request (`fields=["comments"]`) returns `INVALID_CURSOR` — cursors paginate the body only.
 - `read_thread` decodes/quote-strips only the messages on the returned page (lazy walk from the cursor offset), so a full paginated walk is O(N) total, not O(N²).
+- `text_replace`/`text_batch_replace`/`text_read_range` operate only on `text/*`, `application/json`, and `application/x-yaml` MIME types — refuse `application/vnd.google-apps.*` with a pointer to `replace_text`/`gdoc_batch_replace`, and refuse any other MIME with `UNSUPPORTED_MIME`. 5MB size ceiling (`FILE_TOO_LARGE` above that). Non-UTF-8 content is refused with `NOT_TEXT_FILE` — no lossy fallback codec.
+- `text_replace`/`text_batch_replace` share one core (`text_ops.apply_edits_to_file`) with the Google Docs tools' safety guarantees: `expected_count` checked before any write, blast-radius guard (same env vars as `replace_section`/`gdoc_batch_replace`) with autobackup on a confirmed trip, and an optimistic-concurrency check (`CONCURRENT_MODIFICATION`) comparing `modifiedTime`/`md5Checksum` at read-time vs. immediately before write.
+- `text_ops.ALWAYS_BACKUP_ON_WRITE` (currently `True`) makes every `text_replace`/`text_batch_replace` mutation snapshot an autobackup copy before writing, not just confirmed blast-radius trips — pending confirmation that Drive's `revisions()` API gives a reliable rollback point for plain-text files the way it does for Google Docs (see `docs/superpowers/specs/2026-07-11-text-file-editing-design.md` §8).
 
 ## Session Tracking
 Total Claude sessions: 48

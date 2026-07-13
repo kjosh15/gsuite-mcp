@@ -1,4 +1,4 @@
-"""Plain-text Drive file editing utilities — MIME detection, line-ending normalization, and UTF-8 encode/decode."""
+"""Plain-text Drive file editing — matching, decoding, the guarded read-match-write core, and bounded reads."""
 
 import asyncio
 import base64
