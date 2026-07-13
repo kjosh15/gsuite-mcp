@@ -29,20 +29,33 @@ def is_google_apps_mime(mime_type: str) -> bool:
 
 
 def detect_line_ending(text: str) -> str:
-    """Return '\\r\\n' if any CRLF sequence is present, else '\\n'."""
-    return "\r\n" if "\r\n" in text else "\n"
+    """Return '\\r\\n', '\\n', or 'mixed'.
+
+    'mixed' covers files that don't use one line-ending convention
+    uniformly (some '\\r\\n' alongside bare '\\n', or any lone '\\r').
+    decode_text/encode_text leave 'mixed' files completely untouched rather
+    than risk rewriting the line endings of lines an edit never touched.
+    """
+    if "\r" not in text:
+        return "\n"
+    without_crlf = text.replace("\r\n", "")
+    if "\r" in without_crlf or "\n" in without_crlf:
+        return "mixed"
+    return "\r\n"
 
 
 def decode_text(raw: bytes) -> dict[str, Any]:
     """Strictly decode raw bytes as UTF-8. Raises UnicodeDecodeError on failure.
 
-    Internally normalizes CRLF to LF so find/replace patterns don't need to
-    account for line-ending style; the original convention is restored by
-    encode_text.
+    For files using a single, consistent line-ending convention ('\\n' or
+    '\\r\\n'), internally normalizes to '\\n' so find/replace patterns don't
+    need to account for line-ending style; the original convention is
+    restored by encode_text. Files with a 'mixed' convention (see
+    detect_line_ending) are passed through completely unmodified.
     """
     text = raw.decode("utf-8")
     line_ending = detect_line_ending(text)
-    normalized = text.replace("\r\n", "\n")
+    normalized = text.replace("\r\n", "\n") if line_ending == "\r\n" else text
     return {"text": normalized, "line_ending": line_ending}
 
 
@@ -52,15 +65,19 @@ def encode_text(text: str, line_ending: str) -> bytes:
 
 
 def _find_spans(content: str, find: str, match_case: bool, regex: bool) -> list[tuple[int, int]]:
-    if regex:
+    if regex or not match_case:
+        # Case-insensitive matching always goes through re.IGNORECASE, which
+        # scans `content` directly rather than a separately-casefolded copy.
+        # A literal casefold-and-search approach can shift offsets when
+        # casefolding changes length (e.g. "ß" -> "ss"), corrupting output;
+        # regex offsets are always in the original string's coordinates.
+        pattern = find if regex else re.escape(find)
         flags = 0 if match_case else re.IGNORECASE
-        return [(m.start(), m.end()) for m in re.finditer(find, content, flags)]
-    haystack = content if match_case else content.casefold()
-    needle = find if match_case else find.casefold()
+        return [(m.start(), m.end()) for m in re.finditer(pattern, content, flags)]
     spans: list[tuple[int, int]] = []
     idx = 0
     while True:
-        idx = haystack.find(needle, idx)
+        idx = content.find(find, idx)
         if idx == -1:
             break
         spans.append((idx, idx + len(find)))
@@ -393,7 +410,14 @@ async def read_range(
                 "retryable": False,
                 "message": "Cursor is malformed or unrecognized.",
             }
-        hard_end = total_lines
+        hard_end = payload.get("hard_end", total_lines)
+        if (
+            isinstance(hard_end, bool)
+            or not isinstance(hard_end, int)
+            or hard_end < 0
+            or hard_end > total_lines
+        ):
+            hard_end = total_lines
     elif start_line is not None or end_line is not None:
         start = max(0, start_line or 0)
         hard_end = total_lines if end_line is None else min(total_lines, end_line + 1)
@@ -405,7 +429,7 @@ async def read_range(
     end = pagination.take_within_budget(sizes, start, max_bytes, hard_limit=hard_end - start)
     truncated = end < hard_end
     next_cursor = (
-        pagination.encode_cursor({"kind": "text_range", "offset": end})
+        pagination.encode_cursor({"kind": "text_range", "offset": end, "hard_end": hard_end})
         if truncated else None
     )
 

@@ -35,7 +35,7 @@ uv run python -m gsuite_mcp.auth_setup
 - `src/gsuite_mcp/retry.py` — retry helper with exponential backoff for transient Google API errors (5xx, 429)
 - `src/gsuite_mcp/api_key_middleware.py` — Starlette auth middleware (bearer token or `?key=` query param)
 - `src/gsuite_mcp/server.py` — FastMCP server exposing 24 tools (refuses to start without `GSUITE_MCP_API_KEY`)
-- `tests/` — pytest suite mirroring the module split (406 tests)
+- `tests/` — pytest suite mirroring the module split (413 tests)
 - `docs/DEPLOYMENT.md` — deployment runbook (Cloud Run topology, Secret Manager layout, key rotation, smoke tests, client config)
 
 ## Tools
@@ -100,6 +100,9 @@ Optional:
 - `text_replace`/`text_batch_replace`/`text_read_range` operate only on `text/*`, `application/json`, and `application/x-yaml` MIME types — refuse `application/vnd.google-apps.*` with a pointer to `replace_text`/`gdoc_batch_replace`, and refuse any other MIME with `UNSUPPORTED_MIME`. 5MB size ceiling (`FILE_TOO_LARGE` above that). Non-UTF-8 content is refused with `NOT_TEXT_FILE` — no lossy fallback codec.
 - `text_replace`/`text_batch_replace` share one core (`text_ops.apply_edits_to_file`) with the Google Docs tools' safety guarantees: `expected_count` checked before any write, blast-radius guard (same env vars as `replace_section`/`gdoc_batch_replace`) with autobackup on a confirmed trip, and an optimistic-concurrency check (`CONCURRENT_MODIFICATION`) comparing `modifiedTime`/`md5Checksum` at read-time vs. immediately before write.
 - `text_ops.ALWAYS_BACKUP_ON_WRITE` (currently `True`) makes every `text_replace`/`text_batch_replace` mutation snapshot an autobackup copy before writing, not just confirmed blast-radius trips — pending confirmation that Drive's `revisions()` API gives a reliable rollback point for plain-text files the way it does for Google Docs (see `docs/superpowers/specs/2026-07-11-text-file-editing-design.md` §8).
+- `text_ops.detect_line_ending` returns `"\n"`, `"\r\n"`, or `"mixed"` (the last for files that don't use one convention uniformly, e.g. a bare `\n` alongside `\r\n`, or any lone `\r`). Only `"\n"`/`"\r\n"` files get their line endings normalized-then-restored around an edit; `"mixed"` files are decoded/encoded byte-for-byte unmodified so lines an edit didn't touch are never silently rewritten. `text_read_range`'s `line_ending` field can return `"mixed"`.
+- `text_replace`/`text_batch_replace`'s `match_case=False` matching always goes through `re.IGNORECASE` (never a separately-casefolded string), so match offsets are always computed directly against the original file content — avoids corruption on inputs where casefolding changes length (e.g. German `ß`→`ss`).
+- `text_read_range`'s `next_cursor` carries the original `end_line` bound (as `hard_end`) when one was given, so paginating through a budget-truncated bounded read via `next_cursor` stops at the caller's requested `end_line` rather than continuing to end-of-file.
 
 ## Session Tracking
 Total Claude sessions: 53

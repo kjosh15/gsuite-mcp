@@ -46,6 +46,12 @@ class TestDetectLineEnding:
     def test_no_newlines_defaults_lf(self):
         assert text_ops.detect_line_ending("no newlines here") == "\n"
 
+    def test_mixed_crlf_and_lf_detected_as_mixed(self):
+        assert text_ops.detect_line_ending("line1\r\nline2\nline3\r\n") == "mixed"
+
+    def test_bare_cr_only_detected_as_mixed(self):
+        assert text_ops.detect_line_ending("line1\rline2") == "mixed"
+
 
 class TestDecodeEncodeText:
     def test_decode_valid_utf8(self):
@@ -75,6 +81,23 @@ class TestDecodeEncodeText:
         decoded = text_ops.decode_text(original.encode("utf-8"))
         re_encoded = text_ops.encode_text(decoded["text"], decoded["line_ending"])
         assert re_encoded.decode("utf-8") == original
+
+    def test_mixed_line_endings_passed_through_unmodified(self):
+        original = "line1\r\nline2\nline3\r\n"
+        decoded = text_ops.decode_text(original.encode("utf-8"))
+        assert decoded["line_ending"] == "mixed"
+        assert decoded["text"] == original
+        re_encoded = text_ops.encode_text(decoded["text"], decoded["line_ending"])
+        assert re_encoded.decode("utf-8") == original
+
+    def test_mixed_line_endings_untouched_lines_preserved_after_edit(self):
+        # End-to-end: decode, edit one line via apply_replace, re-encode —
+        # every OTHER line's original line-ending bytes must survive exactly.
+        original = "line1\r\nline2\nline3\r\n"
+        decoded = text_ops.decode_text(original.encode("utf-8"))
+        edited = text_ops.apply_replace(decoded["text"], "line2", "LINE-TWO-EDITED")
+        result = text_ops.encode_text(edited, decoded["line_ending"]).decode("utf-8")
+        assert result == "line1\r\nLINE-TWO-EDITED\nline3\r\n"
 
 
 class TestCountAndApplyReplace:
@@ -111,6 +134,14 @@ class TestCountAndApplyReplace:
 
     def test_apply_replace_no_overlap_on_self_overlapping_pattern(self):
         assert text_ops.apply_replace("aaaa", "aa", "b") == "bb"
+
+    def test_apply_replace_case_insensitive_length_changing_casefold_no_corruption(self):
+        # "ß".casefold() == "ss" (length 1 -> 2). Searching a casefolded copy
+        # but slicing the ORIGINAL string by those shifted indices used to
+        # garble output. Matching must always compute offsets against the
+        # original string.
+        result = text_ops.apply_replace("aßb", "b", "X", match_case=False)
+        assert result == "aßX"
 
 
 class TestApplyBatch:

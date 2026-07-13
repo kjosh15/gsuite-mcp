@@ -90,6 +90,31 @@ async def test_read_range_cursor_continues_from_offset():
 
 
 @pytest.mark.asyncio
+async def test_read_range_cursor_continuation_respects_original_end_line():
+    """A budget-cut bounded read's next_cursor must not read past the original end_line."""
+    content = "\n".join(f"line{i}" for i in range(10)).encode()
+    svc = _mock_drive(content)
+
+    all_lines: list[str] = []
+    result = await text_ops.read_range(
+        svc, "f1", _meta(size=str(len(content))), 2, 8, 15, None,
+    )
+    all_lines.extend(result["content"].split("\n"))
+    cursor = result["next_cursor"]
+    assert cursor is not None  # budget of 15 bytes can't fit lines 2-8 in one page
+
+    while cursor is not None:
+        page = await text_ops.read_range(
+            svc, "f1", _meta(size=str(len(content))), None, None, 15, cursor,
+        )
+        all_lines.extend(page["content"].split("\n"))
+        cursor = page["next_cursor"]
+
+    # Must stop at line8 (end_line=8, inclusive) -- never reach line9.
+    assert all_lines == [f"line{i}" for i in range(2, 9)]
+
+
+@pytest.mark.asyncio
 async def test_read_range_invalid_cursor():
     svc = _mock_drive(b"line0\nline1")
     result = await text_ops.read_range(
