@@ -776,3 +776,20 @@ fdd2d6f Fix text_read_range: don't report truncated when explicit end_line is fu
 acc4500 📝 Claude session #46: 2026-07-12 10:56:46
 ```
 
+
+## Session: 2026-07-13 08:26:46
+
+### Files Modified:
+```
+CLAUDE.md
+docs/conversation-log.md
+src/gsuite_mcp/text_ops.py
+```
+
+### Recent Commits:
+```
+58d2f32 Document text_replace/text_batch_replace/text_read_range tools, update test count to 406
+d8cfb4a Add text_replace/text_batch_replace/text_read_range to shared trashed-refusal tests
+613b6fc 📝 Claude session #48: 2026-07-13 08:20:24
+```
+
