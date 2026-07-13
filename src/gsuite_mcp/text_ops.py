@@ -251,16 +251,9 @@ async def apply_edits_to_file(
         blast["per_edit"] = per_edit
         return blast
 
-    backup_file_id = None
-    backup_file_name = None
-    if confirm_delete_chars is not None or ALWAYS_BACKUP_ON_WRITE:
-        backup = await drive_ops.create_backup_copy(
-            drive_service, file_id, backup_folder_id=backup_folder_id,
-        )
-        backup_file_id = backup["backup_file_id"]
-        backup_file_name = backup["backup_file_name"]
-
-    # Optimistic-concurrency check: re-fetch immediately before writing.
+    # Optimistic-concurrency check: re-fetch immediately before writing, and
+    # before creating any backup, so an aborted write doesn't orphan a
+    # backup copy that was never needed.
     current = await asyncio.to_thread(
         lambda: drive_service.files()
         .get(fileId=file_id, fields="modifiedTime,md5Checksum")
@@ -278,6 +271,15 @@ async def apply_edits_to_file(
                 "current content before retrying this edit."
             ),
         }
+
+    backup_file_id = None
+    backup_file_name = None
+    if confirm_delete_chars is not None or ALWAYS_BACKUP_ON_WRITE:
+        backup = await drive_ops.create_backup_copy(
+            drive_service, file_id, backup_folder_id=backup_folder_id,
+        )
+        backup_file_id = backup["backup_file_id"]
+        backup_file_name = backup["backup_file_name"]
 
     new_bytes = encode_text(new_text, decoded["line_ending"])
 
@@ -299,13 +301,20 @@ async def apply_edits_to_file(
         file_id=file_id,
     )
 
-    rev_resp_after = await asyncio.to_thread(
-        lambda: drive_service.revisions()
-        .list(fileId=file_id, fields="revisions(id)", pageSize=1000)
-        .execute()
-    )
-    revisions_after = rev_resp_after.get("revisions", [])
-    revision_id_after = revisions_after[-1]["id"] if revisions_after else None
+    # Best-effort informational lookup: the write has already landed, so a
+    # failure here must never surface as an error for the caller — fall
+    # back to None rather than let the exception propagate and turn a
+    # successful write into a reported failure.
+    try:
+        rev_resp_after = await asyncio.to_thread(
+            lambda: drive_service.revisions()
+            .list(fileId=file_id, fields="revisions(id)", pageSize=1000)
+            .execute()
+        )
+        revisions_after = rev_resp_after.get("revisions", [])
+        revision_id_after = revisions_after[-1]["id"] if revisions_after else None
+    except Exception:
+        revision_id_after = None
 
     result: dict[str, Any] = {
         "matches_found": per_edit[0]["matches_found"] if len(edits) == 1 else None,

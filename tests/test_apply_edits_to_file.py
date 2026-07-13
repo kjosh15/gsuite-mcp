@@ -190,6 +190,37 @@ async def test_concurrent_modification_detected_no_write():
     )
     assert result["error"] == "CONCURRENT_MODIFICATION"
     svc.files().update.assert_not_called()
+    # Concurrency check must happen before backup creation, so an aborted
+    # write never orphans a backup copy that was never needed.
+    svc.files().copy.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_post_write_revision_lookup_failure_does_not_discard_write():
+    """revisions().list() raising on the POST-write call must not turn a
+    successful write into a reported error; revision_id_after falls back
+    to None instead."""
+    content = b"Status: old\r\nOwner: josh\r\n"
+    svc = _mock_drive(content)
+
+    call_count = {"n": 0}
+    def revisions_execute():
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return {"revisions": [{"id": "rev_before"}]}
+        raise Exception("transient API error")
+    revisions_mock = MagicMock()
+    revisions_mock.execute = revisions_execute
+    svc.revisions().list.return_value = revisions_mock
+
+    result = await text_ops.apply_edits_to_file(
+        svc, "f1", _meta(),
+        edits=[{"find": "Status: old", "replace": "Status: new", "expected_count": 1}],
+    )
+    assert "error" not in result
+    assert result["revision_id_before"] == "rev_before"
+    assert result["revision_id_after"] is None
+    svc.files().update.assert_called_once()
 
 
 @pytest.mark.asyncio
