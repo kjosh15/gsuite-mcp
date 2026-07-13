@@ -53,6 +53,19 @@ async def test_read_range_start_end_line_bounds():
 
 
 @pytest.mark.asyncio
+async def test_read_range_fully_satisfied_end_line_not_truncated():
+    """A fully-satisfied start_line/end_line window is not 'truncated' just because the file has more lines after it."""
+    content = "\n".join(f"line{i}" for i in range(10)).encode()
+    svc = _mock_drive(content)
+    result = await text_ops.read_range(
+        svc, "f1", _meta(size=str(len(content))), 2, 4, 100_000, None,
+    )
+    assert result["content"] == "line2\nline3\nline4"
+    assert result["truncated"] is False
+    assert result["next_cursor"] is None
+
+
+@pytest.mark.asyncio
 async def test_read_range_max_bytes_truncates_and_returns_cursor():
     content = "\n".join(f"line{i}" for i in range(1000)).encode()
     svc = _mock_drive(content)

@@ -394,7 +394,7 @@ async def read_range(
 
     sizes = [len(line.encode("utf-8")) + 1 for line in lines]
     end = pagination.take_within_budget(sizes, start, max_bytes, hard_limit=hard_end - start)
-    truncated = end < total_lines
+    truncated = end < hard_end
     next_cursor = (
         pagination.encode_cursor({"kind": "text_range", "offset": end})
         if truncated else None
