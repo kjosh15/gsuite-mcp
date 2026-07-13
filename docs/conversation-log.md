@@ -809,3 +809,20 @@ docs/conversation-log.md
 d8cfb4a Add text_replace/text_batch_replace/text_read_range to shared trashed-refusal tests
 ```
 
+
+## Session: 2026-07-13 08:41:00
+
+### Files Modified:
+```
+docs/conversation-log.md
+src/gsuite_mcp/text_ops.py
+tests/test_apply_edits_to_file.py
+```
+
+### Recent Commits:
+```
+c4bcf77 Fix apply_edits_to_file: don't discard successful writes on post-write revision-fetch failure; check concurrency before creating a backup
+d313ecf 📝 Claude session #50: 2026-07-13 08:33:33
+16b1aa6 📝 Claude session #49: 2026-07-13 08:26:46
+```
+
