@@ -759,3 +759,20 @@ bfea9f8 Add text_read_range tool for bounded plain-text file reads
 f3a4a7d 📝 Claude session #45: 2026-07-12 10:50:45
 ```
 
+
+## Session: 2026-07-13 08:20:24
+
+### Files Modified:
+```
+docs/conversation-log.md
+src/gsuite_mcp/text_ops.py
+tests/test_text_read_range.py
+```
+
+### Recent Commits:
+```
+fdd2d6f Fix text_read_range: don't report truncated when explicit end_line is fully satisfied
+8142975 📝 Claude session #47: 2026-07-12 10:59:13
+acc4500 📝 Claude session #46: 2026-07-12 10:56:46
+```
+
