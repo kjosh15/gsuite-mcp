@@ -33,9 +33,9 @@ uv run python -m gsuite_mcp.auth_setup
 - `src/gsuite_mcp/text_ops.py` — plain-text Drive file editing (matching, UTF-8/line-ending handling, guarded read-match-write core shared by text_replace/text_batch_replace, bounded read_range)
 - `src/gsuite_mcp/gmail_quotes.py` — quoted-history stripping + html-to-text (pure functions)
 - `src/gsuite_mcp/retry.py` — retry helper with exponential backoff for transient Google API errors (5xx, 429)
-- `src/gsuite_mcp/api_key_middleware.py` — Starlette auth middleware (bearer token or `?key=` query param)
+- `src/gsuite_mcp/api_key_middleware.py` — Starlette auth middleware (bearer token or `?key=` query param); 404s OAuth discovery probes (`/.well-known/oauth-*`, `openid-configuration`) *before* the auth check so MCP clients don't mistake it for an OAuth server
 - `src/gsuite_mcp/server.py` — FastMCP server exposing 24 tools (refuses to start without `GSUITE_MCP_API_KEY`)
-- `tests/` — pytest suite mirroring the module split (413 tests)
+- `tests/` — pytest suite mirroring the module split (418 tests)
 - `docs/DEPLOYMENT.md` — deployment runbook (Cloud Run topology, Secret Manager layout, key rotation, smoke tests, client config)
 
 ## Tools
@@ -84,6 +84,7 @@ Optional:
 
 ## Key Constraints
 
+- Auth is API-key only (bearer or `?key=`). The middleware returns **404** for OAuth discovery paths (`/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`, `/.well-known/openid-configuration`) *before* the key check — a `401` there makes claude.ai attempt OAuth Dynamic Client Registration, which fails ("Couldn't register with the sign-in service") and repeatedly drops the connector. The 404 lets the client fall back to the `?key=` URL.
 - No database, no state, no LLM calls
 - Single-user OAuth only (service accounts removed)
 - Streamable HTTP transport for Cloud Run
