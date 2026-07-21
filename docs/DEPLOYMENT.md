@@ -35,6 +35,47 @@ written and rely on Secret Manager for the real values.
 - **Runtime service account:** `1055579418514-compute@developer.gserviceaccount.com` (default Compute SA, granted `secretAccessor` on each secret below)
 - **Identity the server acts as:** `josh@josh.is` (Workspace user — the OAuth refresh token was minted by this account)
 
+## Availability (keep-warm)
+
+The service runs at `min-instances=0` (scale-to-zero) — an idle instance is shut
+down after ~15 min, and the next connect eats a cold boot (~4–13s to Uvicorn, plus
+MCP/OAuth init). MCP clients frequently **time out attaching** against a cold start,
+which showed up as the scheduled daily routine failing to connect (once a ~12h
+overnight zero-instance gap). Root cause was purely scale-to-zero cold start — not
+OOM, not crashes (98/100 instance starts were `AUTOSCALING – no capacity`; no
+memory-limit terminations).
+
+Fix: a **Cloud Scheduler keep-warm job** pings the service every 5 min so one
+instance always stays warm. Under Cloud Run's request-based billing (CPU throttled,
+the default here) this costs ~$0 — far inside the free tier — versus ~$8/mo for
+`min-instances=1`.
+
+```bash
+# The job (already created — for reference)
+gcloud scheduler jobs create http gdrive-mcp-keepwarm \
+  --project=gdrive-mcp-492818 --location=us-central1 \
+  --schedule="*/5 * * * *" \
+  --uri="https://gdrive-mcp-6y4n7a6f2a-uc.a.run.app/" \
+  --http-method=GET --attempt-deadline=30s \
+  --description="Keep gdrive-mcp warm to avoid scale-to-zero cold starts at scheduled MCP connect"
+
+# Inspect / pause / remove
+gcloud scheduler jobs describe gdrive-mcp-keepwarm --location=us-central1 --project=gdrive-mcp-492818
+gcloud scheduler jobs pause   gdrive-mcp-keepwarm --location=us-central1 --project=gdrive-mcp-492818
+gcloud scheduler jobs delete  gdrive-mcp-keepwarm --location=us-central1 --project=gdrive-mcp-492818
+```
+
+- The ping is **unauthenticated**, so the app returns **401** — which still reaches
+  the container and keeps it warm. Consequently the Scheduler console shows the job
+  as **"Failed" on every run**; that is expected and does **not** mean warming is
+  broken. To make it show green, add an unauthenticated `/healthz`→200 endpoint (not
+  yet implemented) or point `--uri` at `.../?key=<api-key>` (embeds the key in the
+  job config — it already appears in request logs via the `?key=` param either way).
+- Every-5-min pings sit ~3× inside the ~15-min idle window, so a single missed/late
+  ping won't drop the instance. Don't lengthen past ~5 min. For a hard guarantee
+  instead of the margin approach, use `gcloud run services update gdrive-mcp
+  --min-instances=1` (~$8/mo).
+
 ## Auth model
 
 Two layers, both required on every request:
