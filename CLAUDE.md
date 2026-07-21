@@ -105,5 +105,5 @@ Optional:
 - `text_read_range`'s `next_cursor` carries the original `end_line` bound (as `hard_end`) when one was given, so paginating through a budget-truncated bounded read via `next_cursor` stops at the caller's requested `end_line` rather than continuing to end-of-file.
 
 ## Session Tracking
-Total Claude sessions: 56
-Last session: 2026-07-13 10:54:09
+Total Claude sessions: 57
+Last session: 2026-07-21 11:49:26
