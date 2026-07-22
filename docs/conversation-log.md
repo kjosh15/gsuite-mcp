@@ -957,3 +957,19 @@ bfc1ff7 Document Cloud Run keep-warm job in DEPLOYMENT.md
 496901c 📝 Claude session #57: 2026-07-21 11:49:26
 ```
 
+
+## Session: 2026-07-22 09:54:29
+
+### Files Modified:
+```
+docs/DEPLOYMENT.md
+docs/conversation-log.md
+```
+
+### Recent Commits:
+```
+8cc7c07 docs: document OAuth-discovery 404 behavior in DEPLOYMENT.md
+bd42e7b Fix: 404 OAuth discovery probes so claude.ai stops dropping the connector
+8ec1884 📝 Claude session #59: 2026-07-21 17:19:14
+```
+
