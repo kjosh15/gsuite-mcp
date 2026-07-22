@@ -989,3 +989,19 @@ docs/conversation-log.md
 bd42e7b Fix: 404 OAuth discovery probes so claude.ai stops dropping the connector
 ```
 
+
+## Session: 2026-07-22 13:09:26
+
+### Files Modified:
+```
+CLAUDE.md
+docs/conversation-log.md
+```
+
+### Recent Commits:
+```
+93d6deb 📝 Claude session #61: 2026-07-22 13:07:17
+45b4319 📝 Claude session #60: 2026-07-22 09:54:29
+8cc7c07 docs: document OAuth-discovery 404 behavior in DEPLOYMENT.md
+```
+
