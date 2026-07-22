@@ -973,3 +973,19 @@ bd42e7b Fix: 404 OAuth discovery probes so claude.ai stops dropping the connecto
 8ec1884 📝 Claude session #59: 2026-07-21 17:19:14
 ```
 
+
+## Session: 2026-07-22 13:07:17
+
+### Files Modified:
+```
+CLAUDE.md
+docs/conversation-log.md
+```
+
+### Recent Commits:
+```
+45b4319 📝 Claude session #60: 2026-07-22 09:54:29
+8cc7c07 docs: document OAuth-discovery 404 behavior in DEPLOYMENT.md
+bd42e7b Fix: 404 OAuth discovery probes so claude.ai stops dropping the connector
+```
+
