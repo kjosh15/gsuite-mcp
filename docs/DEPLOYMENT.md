@@ -85,6 +85,20 @@ Two layers, both required on every request:
 
 The server **refuses to start** if neither `GSUITE_MCP_API_KEY` nor `GDRIVE_MCP_API_KEY` is set (see `server.py:main`). There is no mode that runs unauthenticated.
 
+### OAuth discovery probes must 404, not 401
+
+This server authenticates callers with the API key above — it is **not** an OAuth authorization server. But MCP clients (claude.ai in particular) probe the OAuth discovery paths on connect: `/.well-known/oauth-protected-resource` (and a `/mcp`-suffixed variant), `/.well-known/oauth-authorization-server`, and `/.well-known/openid-configuration`. `APIKeyMiddleware` returns **`404`** for these paths **before** the key check.
+
+Why it matters: a `401` on those paths makes claude.ai conclude the server *is* OAuth-protected and attempt RFC 7591 Dynamic Client Registration against a sign-in service that doesn't exist. That fails with *"Couldn't register with gsuite-mcp's sign-in service"* and **drops the connector** — recurring every time claude.ai re-probes. A `404` cleanly signals "no OAuth here," so the client falls back to the `?key=` URL. Verify after any middleware change:
+
+```bash
+BASE="https://gdrive-mcp-1055579418514.us-central1.run.app"
+curl -s -o /dev/null -w "%{http_code}\n" "$BASE/.well-known/oauth-protected-resource"   # expect 404
+curl -s -o /dev/null -w "%{http_code}\n" "$BASE/mcp"                                      # expect 401 (key still enforced)
+```
+
+If claude.ai ever drops the connector *again* with the same "sign-in service" popup after this, the likely cause is claude.ai making OAuth **mandatory** for custom connectors — a larger change (server would need to actually speak OAuth, or migrate to the official connector flow), not a regression of this fix.
+
 ## Secret Manager secrets
 
 All four are in project `gdrive-mcp-492818` with automatic replication. The runtime SA has `roles/secretmanager.secretAccessor` on each.
