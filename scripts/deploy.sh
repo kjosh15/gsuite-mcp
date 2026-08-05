@@ -38,9 +38,9 @@ TOOL_COUNT=$(curl -s -X POST "$URL" \
   | python3 -c "import sys, json; r=json.loads(sys.stdin.read()); print(len(r['result']['tools']))")
 
 echo "$TOOL_COUNT tools exposed"
-if [ "$TOOL_COUNT" = "24" ]; then
+if [ "$TOOL_COUNT" = "25" ]; then
   echo "Smoke test passed."
 else
-  echo "WARNING: Expected 24 tools, got $TOOL_COUNT"
+  echo "WARNING: Expected 25 tools, got $TOOL_COUNT"
   exit 1
 fi
