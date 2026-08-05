@@ -256,7 +256,7 @@ curl -s -X POST "$URL" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"smoke","version":"0.0"}}}' \
   -w "\nHTTP %{http_code}\n"
 
-# 3. tools/list → expect 21 tools
+# 3. tools/list → expect 25 tools
 curl -s -X POST "$URL" \
   -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer $KEY" \
@@ -265,7 +265,7 @@ curl -s -X POST "$URL" \
   | python3 -c "import sys, json; r=json.loads(sys.stdin.read()); print(len(r['result']['tools']), 'tools')"
 ```
 
-Expected output of (3): `21 tools`.
+Expected output of (3): `25 tools`.
 
 ## Connecting an MCP client
 
