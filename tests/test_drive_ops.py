@@ -132,6 +132,96 @@ async def test_untrash_file():
 
 
 # -------------------------------------------------------------------
+# update_file_metadata
+# -------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_file_metadata_rename_only():
+    svc = MagicMock()
+    svc.files().update.return_value.execute.return_value = {
+        "id": "f1", "name": "New Name.txt", "parents": ["folder_a"],
+        "mimeType": "text/plain", "modifiedTime": "2026-08-01T00:00:00Z",
+    }
+    result = await drive_ops.update_file_metadata(svc, "f1", name="New Name.txt")
+    assert result["file_id"] == "f1"
+    assert result["name"] == "New Name.txt"
+    assert result["parents"] == ["folder_a"]
+    call_kwargs = svc.files().update.call_args.kwargs
+    assert call_kwargs["body"] == {"name": "New Name.txt"}
+    assert "addParents" not in call_kwargs
+    assert "removeParents" not in call_kwargs
+    assert call_kwargs["supportsAllDrives"] is True
+    assert call_kwargs["fileId"] == "f1"
+
+
+@pytest.mark.asyncio
+async def test_update_file_metadata_move_only():
+    svc = MagicMock()
+    svc.files().update.return_value.execute.return_value = {
+        "id": "f1", "name": "Doc", "parents": ["folder_b"],
+        "mimeType": "text/plain", "modifiedTime": "2026-08-01T00:00:00Z",
+    }
+    result = await drive_ops.update_file_metadata(
+        svc, "f1", add_parent_id="folder_b", remove_parent_id="folder_a"
+    )
+    assert result["parents"] == ["folder_b"]
+    call_kwargs = svc.files().update.call_args.kwargs
+    assert "body" not in call_kwargs
+    assert call_kwargs["addParents"] == "folder_b"
+    assert call_kwargs["removeParents"] == "folder_a"
+
+
+@pytest.mark.asyncio
+async def test_update_file_metadata_rename_and_move():
+    svc = MagicMock()
+    svc.files().update.return_value.execute.return_value = {
+        "id": "f1", "name": "New Name", "parents": ["folder_b"],
+        "mimeType": "text/plain", "modifiedTime": "2026-08-01T00:00:00Z",
+    }
+    result = await drive_ops.update_file_metadata(
+        svc, "f1", name="New Name",
+        add_parent_id="folder_b", remove_parent_id="folder_a",
+    )
+    call_kwargs = svc.files().update.call_args.kwargs
+    assert call_kwargs["body"] == {"name": "New Name"}
+    assert call_kwargs["addParents"] == "folder_b"
+    assert call_kwargs["removeParents"] == "folder_a"
+    assert result["file_id"] == "f1"
+    assert result["name"] == "New Name"
+    assert result["parents"] == ["folder_b"]
+
+
+@pytest.mark.asyncio
+async def test_update_file_metadata_round_trip_preserves_file_id():
+    """Rename, move, then reverse both — file ID must never change."""
+    svc = MagicMock()
+
+    def resp(name, parents):
+        return {
+            "id": "f1", "name": name, "parents": parents,
+            "mimeType": "text/plain", "modifiedTime": "2026-08-01T00:00:00Z",
+        }
+
+    svc.files().update.return_value.execute.side_effect = [
+        resp("Renamed.txt", ["folder_a"]),
+        resp("Renamed.txt", ["folder_b"]),
+        resp("Original.txt", ["folder_b"]),
+        resp("Original.txt", ["folder_a"]),
+    ]
+    r1 = await drive_ops.update_file_metadata(svc, "f1", name="Renamed.txt")
+    r2 = await drive_ops.update_file_metadata(
+        svc, "f1", add_parent_id="folder_b", remove_parent_id="folder_a"
+    )
+    r3 = await drive_ops.update_file_metadata(svc, "f1", name="Original.txt")
+    r4 = await drive_ops.update_file_metadata(
+        svc, "f1", add_parent_id="folder_a", remove_parent_id="folder_b"
+    )
+    for r in (r1, r2, r3, r4):
+        assert r["file_id"] == "f1"
+
+
+# -------------------------------------------------------------------
 # download_file_bytes
 # -------------------------------------------------------------------
 

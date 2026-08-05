@@ -1093,6 +1093,108 @@ async def untrash_file(file_id: str) -> dict[str, Any]:
 
 
 @mcp.tool()
+async def update_file_metadata(
+    file_id: str,
+    name: Optional[str] = None,
+    add_parent_id: Optional[str] = None,
+    remove_parent_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Rename a file and/or move it between folders, preserving its Drive file ID.
+
+    Unlike copy+trash, this never mints a new file ID — every downstream
+    reference (hardcoded file IDs in prompts, skills, scheduled tasks) keeps
+    working after the rename/move.
+
+    At least one of name, add_parent_id, remove_parent_id must be set, or
+    this returns NO_CHANGES_REQUESTED and makes no API call.
+
+    Reads the file's current name, parents and capabilities before mutating,
+    so the response includes previous_name and previous_parents to verify
+    the change or reverse it.
+
+    Refuses trashed files with error: TRASHED_FILE (use untrash_file first;
+    there is no sentinel value to trash a file here — use trash_file).
+    Refuses rather than letting a raw Google 403 surface: CANNOT_RENAME when
+    name is set and capabilities.canRename is false; CANNOT_MOVE when
+    add_parent_id/remove_parent_id is set and
+    capabilities.canMoveItemWithinDrive is false. Refuses a remove_parent_id
+    that is not currently a parent of the file with error: NOT_A_PARENT
+    (returns the actual parents list) rather than letting Drive no-op
+    silently.
+    """
+    if name is None and add_parent_id is None and remove_parent_id is None:
+        return {
+            "error": "NO_CHANGES_REQUESTED",
+            "retryable": False,
+            "message": (
+                "At least one of name, add_parent_id, remove_parent_id "
+                "must be set."
+            ),
+        }
+
+    drive = auth.get_drive_service()
+    meta = await asyncio.to_thread(
+        lambda: drive.files()
+        .get(
+            fileId=file_id,
+            fields="name,parents,capabilities,trashed,trashedTime",
+        )
+        .execute()
+    )
+    if meta.get("trashed"):
+        return _trashed_error(file_id, meta)
+
+    capabilities = meta.get("capabilities", {})
+    if name is not None and not capabilities.get("canRename", True):
+        return {
+            "error": "CANNOT_RENAME",
+            "retryable": False,
+            "file_id": file_id,
+            "message": "File capabilities disallow renaming (canRename is false).",
+        }
+    if (
+        (add_parent_id is not None or remove_parent_id is not None)
+        and not capabilities.get("canMoveItemWithinDrive", True)
+    ):
+        return {
+            "error": "CANNOT_MOVE",
+            "retryable": False,
+            "file_id": file_id,
+            "message": (
+                "File capabilities disallow moving between folders "
+                "(canMoveItemWithinDrive is false)."
+            ),
+        }
+
+    previous_parents = meta.get("parents", [])
+    if remove_parent_id is not None and remove_parent_id not in previous_parents:
+        return {
+            "error": "NOT_A_PARENT",
+            "retryable": False,
+            "file_id": file_id,
+            "parents": previous_parents,
+            "message": f"'{remove_parent_id}' is not a current parent of this file.",
+        }
+
+    try:
+        result = await drive_ops.update_file_metadata(
+            drive, file_id,
+            name=name, add_parent_id=add_parent_id, remove_parent_id=remove_parent_id,
+        )
+        result["previous_name"] = meta.get("name", "")
+        result["previous_parents"] = previous_parents
+        return result
+    except HttpError as exc:
+        status = exc.resp.status if exc.resp else 0
+        return {
+            "error": "GOOGLE_API_ERROR",
+            "retryable": status in TRANSIENT_CODES,
+            "http_status": status,
+            "message": f"Google Drive API error (HTTP {status}): {exc}",
+        }
+
+
+@mcp.tool()
 async def create_reply_draft(
     thread_id: str,
     in_reply_to_message_id: str,

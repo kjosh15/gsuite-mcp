@@ -23,7 +23,7 @@ uv run python -m gsuite_mcp.auth_setup
 
 - `src/gsuite_mcp/auth.py` — OAuth user credential loader + service factories
 - `src/gsuite_mcp/auth_setup.py` — one-time OAuth consent CLI
-- `src/gsuite_mcp/drive_ops.py` — Drive v3 operations (download, upload, search, metadata, comments, trash/untrash, backup copy)
+- `src/gsuite_mcp/drive_ops.py` — Drive v3 operations (download, upload, search, metadata, comments, trash/untrash, backup copy, rename/move via update_file_metadata)
 - `src/gsuite_mcp/docs_ops.py` — Docs v1 operations (append, replace_text, replace_section, read_paragraph_at_path, read_document_body)
 - `src/gsuite_mcp/sheets_ops.py` — Sheets v4 operations (append rows)
 - `src/gsuite_mcp/docx_edits.py` — OOXML tracked-changes (pure functions)
@@ -34,8 +34,8 @@ uv run python -m gsuite_mcp.auth_setup
 - `src/gsuite_mcp/gmail_quotes.py` — quoted-history stripping + html-to-text (pure functions)
 - `src/gsuite_mcp/retry.py` — retry helper with exponential backoff for transient Google API errors (5xx, 429)
 - `src/gsuite_mcp/api_key_middleware.py` — Starlette auth middleware (bearer token or `?key=` query param); 404s OAuth discovery probes (`/.well-known/oauth-*`, `openid-configuration`) *before* the auth check so MCP clients don't mistake it for an OAuth server
-- `src/gsuite_mcp/server.py` — FastMCP server exposing 24 tools (refuses to start without `GSUITE_MCP_API_KEY`)
-- `tests/` — pytest suite mirroring the module split (418 tests)
+- `src/gsuite_mcp/server.py` — FastMCP server exposing 25 tools (refuses to start without `GSUITE_MCP_API_KEY`)
+- `tests/` — pytest suite mirroring the module split (431 tests)
 - `docs/DEPLOYMENT.md` — deployment runbook (Cloud Run topology, Secret Manager layout, key rotation, smoke tests, client config)
 
 ## Tools
@@ -64,6 +64,7 @@ uv run python -m gsuite_mcp.auth_setup
 22. `text_replace` — surgical find/replace in a plain-text Drive file (.md/.txt/.csv/.json/.yaml), server-side roundtrip (no base64 payload from caller). `expected_count` checked pre-write, `dry_run`, blast-radius guard + autobackup, optimistic-concurrency check, CRLF-preserving.
 23. `text_batch_replace` — atomic multi-edit version of `text_replace`: one download/upload for N sequential find/replace pairs (edit N sees edit N-1's result), all-or-nothing on any `expected_count` mismatch.
 24. `text_read_range` — bounded line-range read of a plain-text Drive file, for building `text_replace`/`text_batch_replace` find strings without downloading the whole file.
+25. `update_file_metadata` — rename a file and/or move it between folders via a single Drive `files.update` call, preserving its file ID (unlike copy+trash). Guardrails: `NO_CHANGES_REQUESTED` if all three optional args are `None` (no API call made); `TRASHED_FILE`; `CANNOT_RENAME`/`CANNOT_MOVE` when `capabilities.canRename`/`capabilities.canMoveItemWithinDrive` is false; `NOT_A_PARENT` when `remove_parent_id` isn't currently a parent (returns actual `parents`). Returns `previous_name`/`previous_parents` for verification/reversal.
 
 ## Environment Variables
 

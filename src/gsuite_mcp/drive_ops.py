@@ -365,6 +365,36 @@ async def create_backup_copy(
     }
 
 
+async def update_file_metadata(
+    service,
+    file_id: str,
+    name: Optional[str] = None,
+    add_parent_id: Optional[str] = None,
+    remove_parent_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Rename and/or move a file via a single Drive files.update call."""
+    params: dict[str, Any] = {
+        "fileId": file_id,
+        "supportsAllDrives": True,
+        "fields": "id,name,parents,mimeType,modifiedTime,trashed",
+    }
+    if name is not None:
+        params["body"] = {"name": name}
+    if add_parent_id is not None:
+        params["addParents"] = add_parent_id
+    if remove_parent_id is not None:
+        params["removeParents"] = remove_parent_id
+
+    resp = await asyncio.to_thread(lambda: service.files().update(**params).execute())
+    return {
+        "file_id": resp["id"],
+        "name": resp.get("name", ""),
+        "parents": resp.get("parents", []),
+        "mime_type": resp.get("mimeType", ""),
+        "modified_time": resp.get("modifiedTime", ""),
+    }
+
+
 async def untrash_file(service, file_id: str) -> dict[str, Any]:
     """Restore a file from the trash."""
     resp = await asyncio.to_thread(
