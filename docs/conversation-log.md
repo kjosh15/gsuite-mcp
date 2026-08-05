@@ -1037,3 +1037,19 @@ e231982 📝 Claude session #63: 2026-07-22 13:09:44
 93d6deb 📝 Claude session #61: 2026-07-22 13:07:17
 ```
 
+
+## Session: 2026-08-05 10:25:40
+
+### Files Modified:
+```
+docs/conversation-log.md
+scripts/deploy.sh
+```
+
+### Recent Commits:
+```
+1555ff3 Bump deploy.sh smoke-test tool count to 25
+4145833 Add update_file_metadata tool for ID-preserving rename/move
+fda3efd checkpoint: end of turn (2026-08-05T10:04:19Z)
+```
+
