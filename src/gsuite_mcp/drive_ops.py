@@ -142,21 +142,36 @@ async def get_file_metadata(service, file_id: str) -> dict[str, Any]:
         lambda: service.files()
         .get(
             fileId=file_id,
-            fields="id,name,mimeType,size,modifiedTime,webViewLink,parents,capabilities,trashed,trashedTime",
+            fields=(
+                "id,name,mimeType,size,modifiedTime,webViewLink,parents,"
+                "capabilities,trashed,trashedTime,md5Checksum"
+            ),
         )
         .execute()
     )
-    result = {
+    mime_type = metadata.get("mimeType", "")
+    result: dict[str, Any] = {
         "file_id": metadata["id"],
         "name": metadata["name"],
-        "mime_type": metadata.get("mimeType", ""),
-        "size_bytes": int(metadata.get("size", 0)),
+        "mime_type": mime_type,
         "modified_time": metadata.get("modifiedTime", ""),
         "web_view_link": metadata.get("webViewLink", ""),
         "parents": metadata.get("parents", []),
         "capabilities": metadata.get("capabilities", {}),
         "trashed": metadata.get("trashed", False),
     }
+    # Drive's `size` field for native Google formats (Docs, Sheets, Slides)
+    # reflects internal storage quota usage, not the exported byte count —
+    # it can be wildly wrong (observed: reported 64707 vs actual 162908).
+    # Returning it as size_bytes would silently poison any byte-comparison
+    # gate. Flag it unavailable instead of returning a number that lies.
+    if mime_type.startswith("application/vnd.google-apps."):
+        result["size_bytes"] = None
+        result["size_unavailable"] = True
+    else:
+        result["size_bytes"] = int(metadata.get("size", 0))
+    if metadata.get("md5Checksum"):
+        result["md5_checksum"] = metadata["md5Checksum"]
     if metadata.get("trashedTime"):
         result["trashed_time"] = metadata["trashedTime"]
     return result

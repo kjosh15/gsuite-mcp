@@ -233,3 +233,60 @@ async def test_download_file_bytes_returns_raw_bytes():
     result = await drive_ops.download_file_bytes(svc, "f1")
     assert result == b"raw file content"
     svc.files().get_media.assert_called_with(fileId="f1")
+
+
+# -------------------------------------------------------------------
+# get_file_metadata — size_unavailable, md5_checksum
+# -------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_file_metadata_native_doc_size_unavailable():
+    svc = _mock_drive_service({
+        "id": "f1", "name": "Decision_Log",
+        "mimeType": "application/vnd.google-apps.document",
+        "size": "64707",  # Drive reports a number here, but it's storage
+                           # quota usage, not the exported byte count — wrong.
+        "modifiedTime": "2026-05-19T00:00:00Z",
+        "webViewLink": "https://...", "parents": [], "capabilities": {},
+    })
+    result = await drive_ops.get_file_metadata(svc, "f1")
+    assert result["size_bytes"] is None
+    assert result["size_unavailable"] is True
+
+
+@pytest.mark.asyncio
+async def test_get_file_metadata_plain_file_size_accurate():
+    svc = _mock_drive_service({
+        "id": "f1", "name": "notes.md", "mimeType": "text/markdown",
+        "size": "32285",
+        "modifiedTime": "2026-05-19T00:00:00Z",
+        "webViewLink": "https://...", "parents": [], "capabilities": {},
+    })
+    result = await drive_ops.get_file_metadata(svc, "f1")
+    assert result["size_bytes"] == 32285
+    assert "size_unavailable" not in result
+
+
+@pytest.mark.asyncio
+async def test_get_file_metadata_exposes_md5_checksum_when_present():
+    svc = _mock_drive_service({
+        "id": "f1", "name": "notes.md", "mimeType": "text/markdown",
+        "size": "20", "md5Checksum": "d41d8cd98f00b204e9800998ecf8427e",
+        "modifiedTime": "2026-05-19T00:00:00Z",
+        "webViewLink": "https://...", "parents": [], "capabilities": {},
+    })
+    result = await drive_ops.get_file_metadata(svc, "f1")
+    assert result["md5_checksum"] == "d41d8cd98f00b204e9800998ecf8427e"
+
+
+@pytest.mark.asyncio
+async def test_get_file_metadata_omits_md5_checksum_for_native_doc():
+    svc = _mock_drive_service({
+        "id": "f1", "name": "Decision_Log",
+        "mimeType": "application/vnd.google-apps.document",
+        "modifiedTime": "2026-05-19T00:00:00Z",
+        "webViewLink": "https://...", "parents": [], "capabilities": {},
+    })
+    result = await drive_ops.get_file_metadata(svc, "f1")
+    assert "md5_checksum" not in result
