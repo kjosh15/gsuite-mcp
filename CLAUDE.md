@@ -30,41 +30,45 @@ uv run python -m gsuite_mcp.auth_setup
 - `src/gsuite_mcp/gdoc_ops.py` — Google Doc operations (template populate, suggest edit via .docx export, batch replace with revision IDs)
 - `src/gsuite_mcp/gmail_ops.py` — Gmail v1 operations (thread-aware draft creation, inbox delivery via messages.insert, read_thread)
 - `src/gsuite_mcp/pagination.py` — opaque cursor codec + byte-budget windowing (pure functions)
+- `src/gsuite_mcp/upload_session.py` — in-process chunked-upload session state (upload_id -> temp file), a scoped exception to the "no state" constraint; 30-min TTL, never persisted
 - `src/gsuite_mcp/text_ops.py` — plain-text Drive file editing (matching, UTF-8/line-ending handling, guarded read-match-write core shared by text_replace/text_batch_replace, bounded read_range)
 - `src/gsuite_mcp/gmail_quotes.py` — quoted-history stripping + html-to-text (pure functions)
 - `src/gsuite_mcp/retry.py` — retry helper with exponential backoff for transient Google API errors (5xx, 429)
 - `src/gsuite_mcp/api_key_middleware.py` — Starlette auth middleware (bearer token or `?key=` query param); 404s OAuth discovery probes (`/.well-known/oauth-*`, `openid-configuration`) *before* the auth check so MCP clients don't mistake it for an OAuth server
-- `src/gsuite_mcp/server.py` — FastMCP server exposing 25 tools (refuses to start without `GSUITE_MCP_API_KEY`)
+- `src/gsuite_mcp/server.py` — FastMCP server exposing 28 tools (refuses to start without `GSUITE_MCP_API_KEY`)
 - `tests/` — pytest suite mirroring the module split (431 tests)
 - `docs/DEPLOYMENT.md` — deployment runbook (Cloud Run topology, Secret Manager layout, key rotation, smoke tests, client config)
 
 ## Tools
 
 1. `download_file` — download or export a file
-2. `upload_file` — create or update a file (returns `bytes_uploaded` + `file_size` for truncation detection)
-3. `search_files` — Drive query syntax search
-4. `get_file_metadata` — single-file metadata
-5. `get_files_metadata` — batch metadata for N files
-6. `append_to_file` — native append for Docs/Sheets; roundtrip fallback for plain files
-7. `replace_text` — exact + regex replace in Google Docs. Supports `expected_count` (pre-check before mutation), `preceded_by`/`followed_by` (context-anchored filtering within 200-char window)
-8. `replace_section` — replace content by heading/section in Google Docs (heading detection + positional delete/insert). Supports `dry_run` (returns section span without writing), `expected_delete_chars` (precision check), `confirm_delete_chars` (bypass blast-radius guard). Returns `chars_deleted`, `chars_inserted`, `net_change`, `section_span`, `anchor_is_styled_heading`. NORMAL_TEXT fallback anchors flagged with `anchor_is_styled_heading: false`.
-9. `format_document` — batch paragraph formatting: set_style, set_text_style (bold/italic/underline/strikethrough), delete, delete_by_index, delete_empty_after, insert_paragraph (by index, inherits list formatting), insert_paragraph_after_match (by text match). Multi-match protection: >1 match fails unless `match_all: true`. `preview: true` for dry-run.
-10. `manage_comments` — list/create/reply/resolve on Drive comments
-11. `docx_suggest_edit` — tracked-change revision marks in .docx files
-12. `create_reply_draft` — thread-aware Gmail draft creation (draft only, human sends)
-13. `gdoc_template_populate` — copy template → native Google Doc, replace placeholders
-14. `gdoc_suggest_edit` — export Google Doc as .docx, apply tracked change, re-upload as new .docx
-15. `trash_file` — move a file to Drive trash (reversible within 30 days)
-16. `untrash_file` — restore a trashed file from Drive trash
-17. `read_paragraph_at_path` — navigate Google Doc heading/list structure via path syntax (e.g. `TASKS / Career / #2`), returns text + indices
-18. `gdoc_batch_replace` — batch find/replace in a live Google Doc
-19. `deliver_to_inbox` — insert a message into the authenticated user's own Gmail inbox via `messages.insert` (NOT send). From/To hard-coded to `josh@josh.is`. Inputs: `subject`, `body`, `content_type`. Cannot email third parties. (in-place, atomic, cross-paragraph, count verification, dry-run, review-doc denylist). Edits default to `expected_count: 1` (breaking: pass explicit count for multi-match). Supports `confirm_delete_chars` for blast-radius guard bypass. Returns aggregate `chars_deleted`, `chars_inserted`, `net_change`.
-20. `read_thread` — bounded Gmail thread read: strip_quoted_history, message_limit/cursor pagination, never-silent truncation (truncated + next_cursor), thread_changed flag on append.
-21. `read_document` — bounded Google Doc read: fields projection (["body"]/["comments"]/both), structural-element pagination, STALE_CURSOR on mid-pagination edits.
-22. `text_replace` — surgical find/replace in a plain-text Drive file (.md/.txt/.csv/.json/.yaml), server-side roundtrip (no base64 payload from caller). `expected_count` checked pre-write, `dry_run`, blast-radius guard + autobackup, optimistic-concurrency check, CRLF-preserving.
-23. `text_batch_replace` — atomic multi-edit version of `text_replace`: one download/upload for N sequential find/replace pairs (edit N sees edit N-1's result), all-or-nothing on any `expected_count` mismatch.
-24. `text_read_range` — bounded line-range read of a plain-text Drive file, for building `text_replace`/`text_batch_replace` find strings without downloading the whole file.
-25. `update_file_metadata` — rename a file and/or move it between folders via a single Drive `files.update` call, preserving its file ID (unlike copy+trash). Guardrails: `NO_CHANGES_REQUESTED` if all three optional args are `None` (no API call made); `TRASHED_FILE`; `CANNOT_RENAME`/`CANNOT_MOVE` when `capabilities.canRename`/`capabilities.canMoveItemWithinDrive` is false; `NOT_A_PARENT` when `remove_parent_id` isn't currently a parent (returns actual `parents`). Returns `previous_name`/`previous_parents` for verification/reversal.
+2. `upload_file` — create or update a file (returns `bytes_uploaded` + `file_size` for truncation detection). Also accepts `expected_bytes`/`expected_sha256` to reject a truncated/corrupted content_base64 payload before writing.
+3. `upload_file_start` — start a chunked upload session, declaring `total_bytes` (+ optional `expected_sha256`). Returns a unique `upload_id`.
+4. `upload_file_chunk` — upload a single chunk with sequential `chunk_index` starting at 0. Returns `chunk_index` and `bytes_received` so far.
+5. `upload_file_finish` — assemble, verify, and write the uploaded chunks. Returns the final file metadata. Sessions are in-process only, 30-min TTL, `UPLOAD_NOT_FOUND` on loss (never silent).
+6. `search_files` — Drive query syntax search. Zero-result responses carry `status`: `results` | `empty` | `unresolved` (a `'<id>' in parents` clause referencing a nonexistent folder). Known Drive API limitation: `name contains 'X'` won't match a mid-word substring — documented in the tool description with the `name = 'exact'` workaround.
+7. `get_file_metadata` — single-file metadata. For native Google formats (Docs, Sheets, Slides), `size_bytes` is `null` with `size_unavailable: true` instead of Drive's misleading storage-quota number. Exposes `md5_checksum` when Drive provides one.
+8. `get_files_metadata` — batch metadata for N files
+9. `append_to_file` — native append for Docs/Sheets; roundtrip fallback for plain files. Returns `revision_id_before`/`revision_id_after` for Docs/Sheets (monotonic, unlike `modified_time`, which the tool already re-reads post-write but which can still lag under Drive API eventual consistency). Also accepts `expected_bytes`/`expected_sha256` to reject a corrupted payload before writing.
+10. `replace_text` — exact + regex replace in Google Docs. Supports `expected_count` (pre-check before mutation), `preceded_by`/`followed_by` (context-anchored filtering within 200-char window)
+11. `replace_section` — replace content by heading/section in Google Docs (heading detection + positional delete/insert). Supports `dry_run` (returns section span without writing), `expected_delete_chars` (precision check), `confirm_delete_chars` (bypass blast-radius guard). Returns `chars_deleted`, `chars_inserted`, `net_change`, `section_span`, `anchor_is_styled_heading`. NORMAL_TEXT fallback anchors flagged with `anchor_is_styled_heading: false`.
+12. `format_document` — batch paragraph formatting: set_style, set_text_style (bold/italic/underline/strikethrough), delete, delete_by_index, delete_empty_after, insert_paragraph (by index, inherits list formatting), insert_paragraph_after_match (by text match). Multi-match protection: >1 match fails unless `match_all: true`. `preview: true` for dry-run.
+13. `manage_comments` — list/create/reply/resolve on Drive comments
+14. `docx_suggest_edit` — tracked-change revision marks in .docx files
+15. `create_reply_draft` — thread-aware Gmail draft creation (draft only, human sends)
+16. `gdoc_template_populate` — copy template → native Google Doc, replace placeholders
+17. `gdoc_suggest_edit` — export Google Doc as .docx, apply tracked change, re-upload as new .docx
+18. `trash_file` — move a file to Drive trash (reversible within 30 days)
+19. `untrash_file` — restore a trashed file from Drive trash
+20. `read_paragraph_at_path` — navigate Google Doc heading/list structure via path syntax (e.g. `TASKS / Career / #2`), returns text + indices
+21. `gdoc_batch_replace` — batch find/replace in a live Google Doc. Each edit accepts either `{find_text, replace_text}` or `{find, replace}` (text_batch_replace's key names) as an alias.
+22. `deliver_to_inbox` — insert a message into the authenticated user's own Gmail inbox via `messages.insert` (NOT send). From/To hard-coded to `josh@josh.is`. Inputs: `subject`, `body`, `content_type`. Cannot email third parties. (in-place, atomic, cross-paragraph, count verification, dry-run, review-doc denylist). Edits default to `expected_count: 1` (breaking: pass explicit count for multi-match). Supports `confirm_delete_chars` for blast-radius guard bypass. Returns aggregate `chars_deleted`, `chars_inserted`, `net_change`.
+23. `read_thread` — bounded Gmail thread read: strip_quoted_history, message_limit/cursor pagination, never-silent truncation (truncated + next_cursor), thread_changed flag on append.
+24. `read_document` — bounded Google Doc read: fields projection (["body"]/["comments"]/both), structural-element pagination, STALE_CURSOR on mid-pagination edits.
+25. `text_replace` — surgical find/replace in a plain-text Drive file (.md/.txt/.csv/.json/.yaml), server-side roundtrip (no base64 payload from caller). `expected_count` checked pre-write, `dry_run`, blast-radius guard + autobackup, optimistic-concurrency check, CRLF-preserving.
+26. `text_batch_replace` — atomic multi-edit version of `text_replace`: one download/upload for N sequential find/replace pairs (edit N sees edit N-1's result), all-or-nothing on any `expected_count` mismatch. Each edit accepts either `{find, replace}` or `{find_text, replace_text}` (gdoc_batch_replace's key names) as an alias.
+27. `text_read_range` — bounded line-range read of a plain-text Drive file, for building `text_replace`/`text_batch_replace` find strings without downloading the whole file.
+28. `update_file_metadata` — rename a file and/or move it between folders via a single Drive `files.update` call, preserving its file ID (unlike copy+trash). Guardrails: `NO_CHANGES_REQUESTED` if all three optional args are `None` (no API call made); `TRASHED_FILE`; `CANNOT_RENAME`/`CANNOT_MOVE` when `capabilities.canRename`/`capabilities.canMoveItemWithinDrive` is false; `NOT_A_PARENT` when `remove_parent_id` isn't currently a parent (returns actual `parents`). Returns `previous_name`/`previous_parents` for verification/reversal.
 
 ## Environment Variables
 
@@ -87,6 +91,8 @@ Optional:
 
 - Auth is API-key only (bearer or `?key=`). The middleware returns **404** for OAuth discovery paths (`/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`, `/.well-known/openid-configuration`) *before* the key check — a `401` there makes claude.ai attempt OAuth Dynamic Client Registration, which fails ("Couldn't register with the sign-in service") and repeatedly drops the connector. The 404 lets the client fall back to the `?key=` URL.
 - No database, no state, no LLM calls
+- `upload_file_start`/`upload_file_chunk`/`upload_file_finish` are a deliberate, scoped exception to "no database, no state": chunked-upload sessions live only in process memory plus a per-session temp file, with a 30-minute TTL. They do not survive a Cloud Run instance restart or a scale event that routes a later call to a different instance — that surfaces as a loud `UPLOAD_NOT_FOUND`, never silent data loss. Added because the server has no shared filesystem with any caller (confirmed HTTP-only transport, see `server.py:main()`), so a `source_path`-style parameter cannot work here; large `content_base64` payloads must instead be split across multiple tool calls.
+- `search_threads`-style thread search and Gmail mailbox defaults are **out of scope for this repo** — this codebase has no `search_threads` tool and no Gmail-search-with-mailbox-default tool. Those behaviors belong to the separate built-in Gmail connector, not `gsuite-mcp`.
 - Single-user OAuth only (service accounts removed)
 - Streamable HTTP transport for Cloud Run
 - `docx_suggest_edit` requires matches to fit within one paragraph (v1)
