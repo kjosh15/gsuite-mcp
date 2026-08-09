@@ -83,6 +83,60 @@ async def test_search_files_includes_trashed_field():
 
 
 # -------------------------------------------------------------------
+# search_files — empty vs unresolved status (D8)
+# -------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_search_files_returns_results_status_when_files_found():
+    svc = MagicMock()
+    svc.files().list.return_value.execute.return_value = {
+        "files": [{"id": "f1", "name": "a.txt", "mimeType": "text/plain",
+                   "modifiedTime": "2026-08-01T00:00:00Z",
+                   "webViewLink": "https://x", "parents": []}]
+    }
+    result = await drive_ops.search_files(svc, "name = 'a.txt'")
+    assert result["status"] == "results"
+
+
+@pytest.mark.asyncio
+async def test_search_files_returns_empty_status_for_genuinely_empty_query():
+    svc = MagicMock()
+    svc.files().list.return_value.execute.return_value = {"files": []}
+    result = await drive_ops.search_files(svc, "name = 'nothing_matches_this'")
+    assert result["status"] == "empty"
+    assert "unresolved_reference" not in result
+
+
+@pytest.mark.asyncio
+async def test_search_files_returns_unresolved_status_for_missing_parent_folder():
+    from googleapiclient.errors import HttpError
+
+    svc = MagicMock()
+    svc.files().list.return_value.execute.return_value = {"files": []}
+    response = MagicMock()
+    response.status = 404
+    svc.files().get.return_value.execute.side_effect = HttpError(
+        response, b"not found"
+    )
+
+    result = await drive_ops.search_files(svc, "'bad_folder_id' in parents")
+    assert result["status"] == "unresolved"
+    assert result["unresolved_reference"] == "bad_folder_id"
+
+
+@pytest.mark.asyncio
+async def test_search_files_returns_empty_status_when_parent_folder_exists_but_empty():
+    svc = MagicMock()
+    svc.files().list.return_value.execute.return_value = {"files": []}
+    svc.files().get.return_value.execute.return_value = {"id": "real_folder"}
+
+    result = await drive_ops.search_files(svc, "'real_folder' in parents")
+    assert result["status"] == "empty"
+    assert "unresolved_reference" not in result
+
+
+# -------------------------------------------------------------------
 # download_file — trashed field
 # -------------------------------------------------------------------
 

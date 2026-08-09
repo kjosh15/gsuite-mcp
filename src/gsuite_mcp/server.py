@@ -254,7 +254,18 @@ async def upload_file_finish(upload_id: str) -> dict[str, Any]:
 
 @mcp.tool()
 async def search_files(query: str, max_results: int = 10) -> dict[str, Any]:
-    """Search Google Drive for files. Uses Drive API query syntax."""
+    """Search Google Drive for files. Uses Drive API query syntax.
+
+    Zero-result responses carry status: "results" | "empty" | "unresolved".
+    "unresolved" applies when the query is a `'<id>' in parents` clause
+    whose folder doesn't exist or isn't accessible — distinguishing that
+    from a folder that genuinely has no matching files (status: "empty").
+
+    Known Drive API limitation: `name contains 'X'` tokenizes on word
+    boundaries and will not match a substring inside a word (e.g. 'eport'
+    won't match 'report.docx'). For a substring match, use `name = 'exact
+    name'` for an exact match, or list the parent folder
+    (`'<folder_id>' in parents`) with max_results above its file count."""
     return await drive_ops.search_files(auth.get_drive_service(), query, max_results)
 
 

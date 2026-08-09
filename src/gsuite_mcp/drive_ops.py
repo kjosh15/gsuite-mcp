@@ -5,9 +5,14 @@ import base64
 import hashlib
 import io
 import os
+import re
 from typing import Any, Optional
 
+from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload
+
+
+_PARENT_QUERY_RE = re.compile(r"'([^']+)'\s+in\s+parents")
 
 
 async def download_file(
@@ -197,7 +202,37 @@ async def search_files(service, query: str, max_results: int = 10) -> dict[str, 
         if f.get("trashedTime"):
             entry["trashed_time"] = f["trashedTime"]
         files.append(entry)
-    return {"files": files}
+
+    if files:
+        return {"files": files, "status": "results"}
+
+    # Zero results: distinguish a genuinely-empty match from a query that
+    # references a parent folder that doesn't exist or isn't accessible —
+    # both look identical as a bare empty list otherwise.
+    match = _PARENT_QUERY_RE.search(query)
+    if match:
+        parent_id = match.group(1)
+        try:
+            await asyncio.to_thread(
+                lambda: service.files().get(fileId=parent_id, fields="id").execute()
+            )
+        except HttpError as exc:
+            status = exc.resp.status if exc.resp else 0
+            if status == 404:
+                return {
+                    "files": [],
+                    "status": "unresolved",
+                    "unresolved_reference": parent_id,
+                    "message": (
+                        f"Query referenced parent folder {parent_id!r}, "
+                        f"which does not exist or is not accessible. Zero "
+                        f"results reflects a bad reference, not a "
+                        f"genuinely-empty folder."
+                    ),
+                }
+            raise
+
+    return {"files": [], "status": "empty"}
 
 
 async def get_file_metadata(service, file_id: str) -> dict[str, Any]:
