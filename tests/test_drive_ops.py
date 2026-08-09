@@ -1,5 +1,6 @@
 """Tests for drive_ops — trashed-file metadata and trash/untrash operations."""
 
+import base64
 import pytest
 from unittest.mock import MagicMock
 
@@ -338,3 +339,51 @@ async def test_upload_file_from_path_updates_existing_file(tmp_path):
     assert result["file_id"] == "f1"
     svc.files().update.assert_called_once()
     svc.files().create.assert_not_called()
+
+
+# -------------------------------------------------------------------
+# upload_file — expected_bytes / expected_sha256 (D10)
+# -------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_upload_file_rejects_expected_bytes_mismatch():
+    svc = MagicMock()
+    content_b64 = base64.b64encode(b"hello world").decode()  # 11 bytes
+    result = await drive_ops.upload_file(
+        svc, content_b64, "f.txt", "text/plain", expected_bytes=999,
+    )
+    assert result["error"] == "PAYLOAD_SIZE_MISMATCH"
+    assert result["actual_bytes"] == 11
+    assert result["expected_bytes"] == 999
+    svc.files().create.assert_not_called()
+    svc.files().update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_upload_file_rejects_expected_sha256_mismatch():
+    svc = MagicMock()
+    content_b64 = base64.b64encode(b"hello world").decode()
+    result = await drive_ops.upload_file(
+        svc, content_b64, "f.txt", "text/plain", expected_sha256="0" * 64,
+    )
+    assert result["error"] == "PAYLOAD_HASH_MISMATCH"
+    svc.files().create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_upload_file_accepts_matching_expected_bytes_and_sha256():
+    import hashlib
+    content = b"hello world"
+    svc = MagicMock()
+    svc.files().create.return_value.execute.return_value = {
+        "id": "f1", "name": "f.txt", "webViewLink": "https://x",
+        "version": "1", "modifiedTime": "2026-08-05T00:00:00Z",
+    }
+    svc.files().get.return_value.execute.return_value = {"size": "11"}
+    result = await drive_ops.upload_file(
+        svc, base64.b64encode(content).decode(), "f.txt", "text/plain",
+        expected_bytes=11, expected_sha256=hashlib.sha256(content).hexdigest(),
+    )
+    assert "error" not in result
+    assert result["file_id"] == "f1"

@@ -253,3 +253,50 @@ async def test_append_to_google_doc_post_write_revision_lookup_failure():
         assert result["revision_id_before"] == "rev_before"
         assert result["revision_id_after"] is None
         docs.documents().batchUpdate.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_append_to_file_rejects_expected_bytes_mismatch(mock_services):
+    from gsuite_mcp.server import append_to_file
+    result = await append_to_file(
+        file_id="doc123", content="new line", expected_bytes=999,
+    )
+    assert result["error"] == "PAYLOAD_SIZE_MISMATCH"
+    mock_services["drive"].files().get.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_append_to_file_rejects_expected_sha256_mismatch(mock_services):
+    from gsuite_mcp.server import append_to_file
+    result = await append_to_file(
+        file_id="doc123", content="new line", expected_sha256="0" * 64,
+    )
+    assert result["error"] == "PAYLOAD_HASH_MISMATCH"
+    mock_services["drive"].files().get.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_append_to_file_accepts_matching_expected_bytes(mock_services):
+    import hashlib
+    drive = mock_services["drive"]
+    docs = mock_services["docs"]
+    drive.files().get.return_value.execute.return_value = {
+        "name": "Index", "mimeType": "application/vnd.google-apps.document",
+        "modifiedTime": "2026-04-10T12:00:00Z",
+    }
+    docs.documents().get.return_value.execute.return_value = {
+        "body": {"content": [{"endIndex": 1}, {"endIndex": 42}]}
+    }
+    docs.documents().batchUpdate.return_value.execute.return_value = {}
+    drive.revisions().list.return_value.execute.return_value = {"revisions": []}
+
+    content = "new line"
+    expected_bytes = len(("\n" + content).encode("utf-8"))
+    expected_sha256 = hashlib.sha256(("\n" + content).encode("utf-8")).hexdigest()
+
+    from gsuite_mcp.server import append_to_file
+    result = await append_to_file(
+        file_id="doc123", content=content,
+        expected_bytes=expected_bytes, expected_sha256=expected_sha256,
+    )
+    assert "error" not in result

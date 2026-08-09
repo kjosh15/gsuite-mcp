@@ -95,8 +95,16 @@ async def upload_file(
     mime_type: str,
     file_id: Optional[str] = None,
     parent_folder_id: Optional[str] = None,
+    expected_bytes: Optional[int] = None,
+    expected_sha256: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Upload a file to Google Drive (create or update)."""
+    """Upload a file to Google Drive (create or update).
+
+    expected_bytes/expected_sha256, if given, are checked against the
+    decoded content_base64 payload before any Drive API call. On mismatch,
+    returns PAYLOAD_SIZE_MISMATCH or PAYLOAD_HASH_MISMATCH and writes
+    nothing — this converts silent truncation/corruption of a large
+    base64 payload into a loud, retryable failure."""
     if file_id:
         drive = auth.get_drive_service()
         meta = await asyncio.to_thread(
@@ -113,6 +121,8 @@ async def upload_file(
         mime_type,
         file_id,
         parent_folder_id,
+        expected_bytes=expected_bytes,
+        expected_sha256=expected_sha256,
     )
 
 
@@ -271,6 +281,8 @@ async def append_to_file(
     file_id: str,
     content: str,
     separator: str = "\n",
+    expected_bytes: Optional[int] = None,
+    expected_sha256: Optional[str] = None,
 ) -> dict[str, Any]:
     """Append content to a file. Uses native API where possible.
 
@@ -278,12 +290,42 @@ async def append_to_file(
     - Google Sheets: Sheets API values.append (rows split on newline, cols on comma)
     - Other files: download-concat-upload fallback
 
+    expected_bytes/expected_sha256, if given, are checked against the exact
+    bytes about to be sent (separator + content, UTF-8 encoded) before any
+    Drive API call. On mismatch, returns PAYLOAD_SIZE_MISMATCH or
+    PAYLOAD_HASH_MISMATCH and writes nothing.
+
     Returns {file_id, file_name, mime_type, bytes_appended, modified_time, mode}.
     For Google Docs/Sheets, also returns revision_id_before/revision_id_after
     (Drive revision IDs) — a monotonic verification handle, unlike
     modified_time, which can lag under Drive API eventual consistency even
     though this tool always re-reads it post-write.
     Refuses trashed files with error: TRASHED_FILE."""
+    payload_bytes = (separator + content).encode("utf-8")
+    if expected_bytes is not None and len(payload_bytes) != expected_bytes:
+        return {
+            "error": "PAYLOAD_SIZE_MISMATCH",
+            "retryable": True,
+            "expected_bytes": expected_bytes,
+            "actual_bytes": len(payload_bytes),
+            "message": (
+                f"Received {len(payload_bytes)} bytes but expected_bytes "
+                f"was {expected_bytes}. Nothing was written."
+            ),
+        }
+    if expected_sha256 is not None:
+        actual_hash = hashlib.sha256(payload_bytes).hexdigest()
+        if actual_hash != expected_sha256:
+            return {
+                "error": "PAYLOAD_HASH_MISMATCH",
+                "retryable": True,
+                "expected_sha256": expected_sha256,
+                "actual_sha256": actual_hash,
+                "message": (
+                    "Received content's sha256 does not match "
+                    "expected_sha256. Nothing was written."
+                ),
+            }
     drive = auth.get_drive_service()
     meta = await asyncio.to_thread(
         lambda: drive.files()

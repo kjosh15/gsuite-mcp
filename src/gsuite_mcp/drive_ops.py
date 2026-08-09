@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import hashlib
 import io
 import os
 from typing import Any, Optional
@@ -113,9 +114,37 @@ async def upload_file(
     mime_type: str,
     file_id: Optional[str] = None,
     parent_folder_id: Optional[str] = None,
+    expected_bytes: Optional[int] = None,
+    expected_sha256: Optional[str] = None,
 ) -> dict[str, Any]:
     file_bytes = base64.b64decode(content_base64)
     bytes_uploaded = len(file_bytes)
+    if expected_bytes is not None and bytes_uploaded != expected_bytes:
+        return {
+            "error": "PAYLOAD_SIZE_MISMATCH",
+            "retryable": True,
+            "expected_bytes": expected_bytes,
+            "actual_bytes": bytes_uploaded,
+            "message": (
+                f"Received {bytes_uploaded} bytes but expected_bytes was "
+                f"{expected_bytes}. The payload may have been truncated in "
+                f"transit. Nothing was written."
+            ),
+        }
+    if expected_sha256 is not None:
+        actual_hash = hashlib.sha256(file_bytes).hexdigest()
+        if actual_hash != expected_sha256:
+            return {
+                "error": "PAYLOAD_HASH_MISMATCH",
+                "retryable": True,
+                "expected_sha256": expected_sha256,
+                "actual_sha256": actual_hash,
+                "message": (
+                    "Received payload's sha256 does not match "
+                    "expected_sha256. The payload may have been corrupted "
+                    "in transit. Nothing was written."
+                ),
+            }
     media = MediaIoBaseUpload(
         io.BytesIO(file_bytes), mimetype=mime_type, resumable=True
     )
