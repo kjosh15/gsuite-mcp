@@ -38,6 +38,30 @@ def _trashed_error(file_id: str, meta: dict) -> dict[str, Any]:
     }
 
 
+def _normalize_batch_edit(
+    edit: dict[str, Any],
+    find_key: str,
+    replace_key: str,
+    alias_find_key: str,
+    alias_replace_key: str,
+) -> dict[str, Any]:
+    """Map an edit dict's alias find/replace keys onto the canonical pair.
+
+    Lets text_batch_replace accept gdoc_batch_replace's find_text/replace_text
+    keys and vice versa, without requiring both pairs to be present at once.
+    If neither pair is fully present, returns edit unchanged so the existing
+    per-tool validation reports the missing-field error.
+    """
+    if find_key in edit and replace_key in edit:
+        return edit
+    if alias_find_key in edit and alias_replace_key in edit:
+        normalized = dict(edit)
+        normalized[find_key] = normalized.pop(alias_find_key)
+        normalized[replace_key] = normalized.pop(alias_replace_key)
+        return normalized
+    return edit
+
+
 @mcp.tool()
 async def download_file(
     file_id: str,
@@ -736,7 +760,7 @@ async def gdoc_batch_replace(
     Accepts an array of find/replace pairs applied atomically in one
     batchUpdate. Supports cross-paragraph matches. Preserves file ID.
 
-    Each edit: {find_text: str, replace_text: str, expected_count?: int}.
+    Each edit: {find_text: str, replace_text: str, expected_count?: int}. Also accepts find/replace as aliases (text_batch_replace's key names).
     If any pair's expected_count doesn't match, the entire batch aborts.
 
     dry_run=True returns per-pair match counts without writing.
@@ -802,6 +826,10 @@ async def gdoc_batch_replace(
             "retryable": False,
             "message": "edits array must not be empty.",
         }
+    edits = [
+        _normalize_batch_edit(e, "find_text", "replace_text", "find", "replace")
+        for e in edits
+    ]
     for i, edit in enumerate(edits):
         if "find_text" not in edit or "replace_text" not in edit:
             return {
@@ -955,7 +983,8 @@ async def text_batch_replace(
     the whole file, send only the find/replace pairs.
 
     Each edit: {find: str, replace: str, expected_count?: int, match_case?:
-    bool, regex?: bool}. Edits apply sequentially in array order — edit N
+    bool, regex?: bool}. Also accepts find_text/replace_text as aliases (gdoc_batch_replace's key names).
+    Edits apply sequentially in array order — edit N
     sees the result of edits 1..N-1 (same contract as gdoc_batch_replace).
     All-or-nothing: if any edit's expected_count doesn't match, the entire
     batch aborts before any write; BATCH_ABORTED names the failing edit's
@@ -980,6 +1009,10 @@ async def text_batch_replace(
             "retryable": False,
             "message": "edits array must not be empty.",
         }
+    edits = [
+        _normalize_batch_edit(e, "find", "replace", "find_text", "replace_text")
+        for e in edits
+    ]
     for i, edit in enumerate(edits):
         if "find" not in edit or "replace" not in edit:
             return {
