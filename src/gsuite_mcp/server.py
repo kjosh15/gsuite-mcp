@@ -1,6 +1,8 @@
 """Google Workspace MCP server — thin wrappers over *_ops modules."""
 
 import asyncio
+import base64
+import hashlib
 import logging
 import os
 import re
@@ -10,7 +12,17 @@ from typing import Any, Optional
 from fastmcp import FastMCP
 from googleapiclient.errors import HttpError
 
-from gsuite_mcp import auth, docs_ops, docx_edits, drive_ops, gdoc_ops, gmail_ops, sheets_ops, text_ops
+from gsuite_mcp import (
+    auth,
+    docs_ops,
+    docx_edits,
+    drive_ops,
+    gdoc_ops,
+    gmail_ops,
+    sheets_ops,
+    text_ops,
+    upload_session,
+)
 from gsuite_mcp.retry import TRANSIENT_CODES
 from gsuite_mcp.api_key_middleware import APIKeyMiddleware
 
@@ -102,6 +114,131 @@ async def upload_file(
         file_id,
         parent_folder_id,
     )
+
+
+@mcp.tool()
+async def upload_file_start(
+    file_name: str,
+    mime_type: str,
+    total_bytes: int,
+    file_id: Optional[str] = None,
+    parent_folder_id: Optional[str] = None,
+    expected_sha256: Optional[str] = None,
+) -> dict[str, Any]:
+    """Begin a chunked upload for files too large to send as one upload_file call.
+
+    Large content_base64 payloads generated in a single tool call can arrive
+    truncated or corrupted. This spreads the payload across several
+    upload_file_chunk calls instead: call upload_file_start once, then
+    upload_file_chunk repeatedly with sequential chunk_index starting at 0,
+    then upload_file_finish exactly once.
+
+    Sessions expire after 30 minutes of inactivity and do not survive a
+    server restart — upload_file_finish (or upload_file_chunk) returns
+    UPLOAD_NOT_FOUND if the session is gone; restart from upload_file_start.
+
+    expected_sha256, if given, is checked against the fully-assembled file
+    in upload_file_finish before it is written to Drive."""
+    if total_bytes <= 0:
+        return {
+            "error": "INVALID_INPUT",
+            "retryable": False,
+            "message": "total_bytes must be positive.",
+        }
+    if file_id:
+        drive = auth.get_drive_service()
+        meta = await asyncio.to_thread(
+            lambda: drive.files()
+            .get(fileId=file_id, fields="name,trashed,trashedTime")
+            .execute()
+        )
+        if meta.get("trashed"):
+            return _trashed_error(file_id, meta)
+    session = upload_session.start_session(
+        file_name=file_name,
+        mime_type=mime_type,
+        total_bytes=total_bytes,
+        file_id=file_id,
+        parent_folder_id=parent_folder_id,
+        expected_sha256=expected_sha256,
+    )
+    return {"upload_id": session["upload_id"], "chunk_size_hint": 16384}
+
+
+@mcp.tool()
+async def upload_file_chunk(
+    upload_id: str,
+    chunk_base64: str,
+    chunk_index: int,
+) -> dict[str, Any]:
+    """Send one chunk of a file started with upload_file_start.
+
+    chunk_index must be sequential starting at 0 (0, 1, 2, ...); an
+    out-of-order or repeated index is rejected with INVALID_CHUNK."""
+    try:
+        chunk_bytes = base64.b64decode(chunk_base64, validate=True)
+    except Exception:
+        return {
+            "error": "INVALID_BASE64",
+            "retryable": True,
+            "message": "chunk_base64 did not decode as valid base64.",
+        }
+    try:
+        result = upload_session.write_chunk(upload_id, chunk_index, chunk_bytes)
+    except KeyError:
+        return {
+            "error": "UPLOAD_NOT_FOUND",
+            "retryable": False,
+            "message": (
+                f"No active upload session {upload_id!r}. It may have "
+                f"expired (30 min TTL) or the server restarted. Restart "
+                f"with upload_file_start."
+            ),
+        }
+    except ValueError as e:
+        return {"error": "INVALID_CHUNK", "retryable": True, "message": str(e)}
+    return {"upload_id": upload_id, **result}
+
+
+@mcp.tool()
+async def upload_file_finish(upload_id: str) -> dict[str, Any]:
+    """Assemble a chunked upload's bytes and write it to Drive.
+
+    Verifies the assembled byte count matches total_bytes from
+    upload_file_start, and the sha256 hash if expected_sha256 was given.
+    Returns the same shape as upload_file's success response. The session
+    (and its temp file) is deleted whether this succeeds or fails."""
+    try:
+        session = upload_session.finish_session(upload_id)
+    except KeyError:
+        return {
+            "error": "UPLOAD_NOT_FOUND",
+            "retryable": False,
+            "message": (
+                f"No active upload session {upload_id!r}. It may have "
+                f"expired (30 min TTL) or the server restarted. Restart "
+                f"with upload_file_start."
+            ),
+        }
+    except ValueError as e:
+        return {
+            "error": "INCOMPLETE_OR_CORRUPT_UPLOAD",
+            "retryable": True,
+            "message": str(e),
+        }
+
+    try:
+        drive = auth.get_drive_service()
+        return await drive_ops.upload_file_from_path(
+            drive,
+            file_path=session["temp_path"],
+            file_name=session["file_name"],
+            mime_type=session["mime_type"],
+            file_id=session["file_id"],
+            parent_folder_id=session["parent_folder_id"],
+        )
+    finally:
+        upload_session.cleanup(upload_id)
 
 
 @mcp.tool()
