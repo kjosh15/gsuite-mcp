@@ -33,3 +33,10 @@ async def test_search_files(mock_drive):
     assert len(result["files"]) == 1
     assert result["files"][0]["file_id"] == "f1"
     assert result["files"][0]["name"] == "Stakeholder_Map.docx"
+
+
+def test_search_files_docstring_documents_name_contains_limitation():
+    from gsuite_mcp.server import search_files
+    doc = search_files.__doc__ or ""
+    assert "tokenizes" in doc
+    assert "name = " in doc
