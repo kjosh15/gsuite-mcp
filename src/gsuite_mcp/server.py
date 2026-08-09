@@ -221,6 +221,7 @@ async def upload_file_finish(upload_id: str) -> dict[str, Any]:
             ),
         }
     except ValueError as e:
+        upload_session.cleanup(upload_id)
         return {
             "error": "INCOMPLETE_OR_CORRUPT_UPLOAD",
             "retryable": True,

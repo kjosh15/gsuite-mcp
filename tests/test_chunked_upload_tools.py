@@ -1,7 +1,6 @@
 """Tests for upload_file_start/upload_file_chunk/upload_file_finish (D9b)."""
 
 import base64
-import hashlib
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -11,9 +10,9 @@ from gsuite_mcp import upload_session
 
 @pytest.fixture(autouse=True)
 def _clear_sessions():
-    upload_session._SESSIONS.clear()
     yield
-    upload_session._SESSIONS.clear()
+    for uid in list(upload_session._SESSIONS.keys()):
+        upload_session.cleanup(uid)
 
 
 @pytest.fixture
@@ -113,6 +112,9 @@ async def test_upload_file_finish_incomplete_upload_errors(mock_drive):
     )
     result = await upload_file_finish(upload_id=upload_id)
     assert result["error"] == "INCOMPLETE_OR_CORRUPT_UPLOAD"
+
+    # session (and its temp file) is cleaned up even on this failure path
+    assert upload_session.get_session(upload_id) is None
 
 
 @pytest.mark.asyncio

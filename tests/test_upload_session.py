@@ -7,9 +7,9 @@ from gsuite_mcp import upload_session
 
 @pytest.fixture(autouse=True)
 def _clear_sessions():
-    upload_session._SESSIONS.clear()
     yield
-    upload_session._SESSIONS.clear()
+    for uid in list(upload_session._SESSIONS.keys()):
+        upload_session.cleanup(uid)
 
 
 def test_start_session_returns_upload_id_and_creates_temp_file():
