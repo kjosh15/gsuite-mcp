@@ -3,9 +3,10 @@
 import asyncio
 import base64
 import io
+import os
 from typing import Any, Optional
 
-from googleapiclient.http import MediaIoBaseUpload
+from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload
 
 
 async def download_file(
@@ -52,19 +53,14 @@ async def download_file_bytes(service, file_id: str) -> bytes:
     )
 
 
-async def upload_file(
+async def _upload_media(
     service,
-    content_base64: str,
+    media,
     file_name: str,
-    mime_type: str,
-    file_id: Optional[str] = None,
-    parent_folder_id: Optional[str] = None,
+    file_id: Optional[str],
+    parent_folder_id: Optional[str],
+    bytes_uploaded: int,
 ) -> dict[str, Any]:
-    file_bytes = base64.b64decode(content_base64)
-    bytes_uploaded = len(file_bytes)
-    media = MediaIoBaseUpload(
-        io.BytesIO(file_bytes), mimetype=mime_type, resumable=True
-    )
     if file_id:
         result = await asyncio.to_thread(
             lambda: service.files()
@@ -108,6 +104,44 @@ async def upload_file(
         "bytes_uploaded": bytes_uploaded,
         "file_size": file_size,
     }
+
+
+async def upload_file(
+    service,
+    content_base64: str,
+    file_name: str,
+    mime_type: str,
+    file_id: Optional[str] = None,
+    parent_folder_id: Optional[str] = None,
+) -> dict[str, Any]:
+    file_bytes = base64.b64decode(content_base64)
+    bytes_uploaded = len(file_bytes)
+    media = MediaIoBaseUpload(
+        io.BytesIO(file_bytes), mimetype=mime_type, resumable=True
+    )
+    return await _upload_media(
+        service, media, file_name, file_id, parent_folder_id, bytes_uploaded
+    )
+
+
+async def upload_file_from_path(
+    service,
+    file_path: str,
+    file_name: str,
+    mime_type: str,
+    file_id: Optional[str] = None,
+    parent_folder_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Upload a file already on local disk, streaming it instead of holding
+    it as an in-memory base64 payload. Used by the chunked-upload flow
+    (upload_file_start/upload_file_chunk/upload_file_finish) once all chunks
+    have been assembled into a temp file — see upload_session.py.
+    """
+    bytes_uploaded = os.path.getsize(file_path)
+    media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
+    return await _upload_media(
+        service, media, file_name, file_id, parent_folder_id, bytes_uploaded
+    )
 
 
 async def search_files(service, query: str, max_results: int = 10) -> dict[str, Any]:

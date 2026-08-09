@@ -290,3 +290,51 @@ async def test_get_file_metadata_omits_md5_checksum_for_native_doc():
     })
     result = await drive_ops.get_file_metadata(svc, "f1")
     assert "md5_checksum" not in result
+
+
+# -------------------------------------------------------------------
+# upload_file_from_path
+# -------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_upload_file_from_path_creates_new_file(tmp_path):
+    svc = MagicMock()
+    svc.files().create.return_value.execute.return_value = {
+        "id": "new1", "name": "archive.md", "webViewLink": "https://x",
+        "version": "1", "modifiedTime": "2026-08-05T00:00:00Z",
+    }
+    svc.files().get.return_value.execute.return_value = {"size": "11"}
+
+    local_file = tmp_path / "archive.md"
+    local_file.write_bytes(b"hello world")
+
+    result = await drive_ops.upload_file_from_path(
+        svc, str(local_file), file_name="archive.md", mime_type="text/markdown",
+    )
+    assert result["file_id"] == "new1"
+    assert result["bytes_uploaded"] == 11
+    assert result["file_size"] == 11
+    svc.files().create.assert_called_once()
+    svc.files().update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_upload_file_from_path_updates_existing_file(tmp_path):
+    svc = MagicMock()
+    svc.files().update.return_value.execute.return_value = {
+        "id": "f1", "name": "archive.md", "webViewLink": "https://x",
+        "version": "2", "modifiedTime": "2026-08-05T00:00:00Z",
+    }
+    svc.files().get.return_value.execute.return_value = {"size": "11"}
+
+    local_file = tmp_path / "archive.md"
+    local_file.write_bytes(b"hello world")
+
+    result = await drive_ops.upload_file_from_path(
+        svc, str(local_file), file_name="archive.md", mime_type="text/markdown",
+        file_id="f1",
+    )
+    assert result["file_id"] == "f1"
+    svc.files().update.assert_called_once()
+    svc.files().create.assert_not_called()
