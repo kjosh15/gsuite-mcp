@@ -212,3 +212,44 @@ async def test_append_to_plain_file_has_no_revision_ids(mock_services):
     assert "revision_id_before" not in result
     assert "revision_id_after" not in result
     drive.revisions().list.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_append_to_google_doc_post_write_revision_lookup_failure():
+    """revisions().list() raising on the POST-write call must not turn a
+    successful append into a reported error; revision_id_after falls back
+    to None instead."""
+    with patch("gsuite_mcp.auth.get_drive_service") as mock_drive, \
+         patch("gsuite_mcp.auth.get_docs_service") as mock_docs:
+        drive = MagicMock()
+        docs = MagicMock()
+        mock_drive.return_value = drive
+        mock_docs.return_value = docs
+
+        drive.files().get.return_value.execute.return_value = {
+            "name": "Index", "mimeType": "application/vnd.google-apps.document",
+            "modifiedTime": "2026-04-10T12:00:00Z",
+        }
+        docs.documents().get.return_value.execute.return_value = {
+            "body": {"content": [{"endIndex": 1}, {"endIndex": 42}]}
+        }
+        docs.documents().batchUpdate.return_value.execute.return_value = {}
+
+        call_count = {"n": 0}
+        def revisions_execute():
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return {"revisions": [{"id": "rev_before"}]}
+            raise Exception("transient API error")
+        revisions_mock = MagicMock()
+        revisions_mock.execute = revisions_execute
+        drive.revisions().list.return_value = revisions_mock
+
+        from gsuite_mcp.server import append_to_file
+        result = await append_to_file(file_id="doc123", content="new line", separator="\n")
+
+        assert "error" not in result
+        assert result["mode"] == "docs_native"
+        assert result["revision_id_before"] == "rev_before"
+        assert result["revision_id_after"] is None
+        docs.documents().batchUpdate.assert_called_once()

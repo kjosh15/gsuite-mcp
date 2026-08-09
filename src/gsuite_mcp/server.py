@@ -217,16 +217,23 @@ async def append_to_file(
         "mode": mode,
     }
     if is_native:
-        rev_resp_after = await asyncio.to_thread(
-            lambda: drive.revisions()
-            .list(fileId=file_id, fields="revisions(id)", pageSize=1000)
-            .execute()
-        )
-        revisions_after = rev_resp_after.get("revisions", [])
         result["revision_id_before"] = revision_id_before
-        result["revision_id_after"] = (
-            revisions_after[-1]["id"] if revisions_after else None
-        )
+        # Best-effort informational lookup: the write has already landed, so a
+        # failure here must never surface as an error for the caller — fall
+        # back to None rather than let the exception propagate and turn a
+        # successful write into a reported failure.
+        try:
+            rev_resp_after = await asyncio.to_thread(
+                lambda: drive.revisions()
+                .list(fileId=file_id, fields="revisions(id)", pageSize=1000)
+                .execute()
+            )
+            revisions_after = rev_resp_after.get("revisions", [])
+            result["revision_id_after"] = (
+                revisions_after[-1]["id"] if revisions_after else None
+            )
+        except Exception:
+            result["revision_id_after"] = None
     return result
 
 
