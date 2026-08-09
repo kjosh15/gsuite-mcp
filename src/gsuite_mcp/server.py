@@ -155,6 +155,15 @@ async def upload_file_start(
             "retryable": False,
             "message": "total_bytes must be positive.",
         }
+    if total_bytes > upload_session.MAX_UPLOAD_BYTES:
+        return {
+            "error": "FILE_TOO_LARGE",
+            "retryable": False,
+            "message": (
+                f"total_bytes ({total_bytes}) exceeds the "
+                f"{upload_session.MAX_UPLOAD_BYTES}-byte chunked-upload limit."
+            ),
+        }
     if file_id:
         drive = auth.get_drive_service()
         meta = await asyncio.to_thread(
@@ -351,13 +360,19 @@ async def append_to_file(
     is_native = mime in (GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME)
     revision_id_before = None
     if is_native:
-        rev_resp = await asyncio.to_thread(
-            lambda: drive.revisions()
-            .list(fileId=file_id, fields="revisions(id)", pageSize=1000)
-            .execute()
-        )
-        revisions = rev_resp.get("revisions", [])
-        revision_id_before = revisions[-1]["id"] if revisions else None
+        # Best-effort informational lookup: this runs before the mutation, so
+        # a failure here must never surface as an error for the caller — fall
+        # back to None rather than let the exception abort the write itself.
+        try:
+            rev_resp = await asyncio.to_thread(
+                lambda: drive.revisions()
+                .list(fileId=file_id, fields="revisions(id)", pageSize=1000)
+                .execute()
+            )
+            revisions = rev_resp.get("revisions", [])
+            revision_id_before = revisions[-1]["id"] if revisions else None
+        except Exception:
+            revision_id_before = None
 
     if mime == GOOGLE_DOC_MIME:
         docs = auth.get_docs_service()

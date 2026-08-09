@@ -43,6 +43,16 @@ async def test_upload_file_start_rejects_non_positive_total_bytes(mock_drive):
 
 
 @pytest.mark.asyncio
+async def test_upload_file_start_rejects_total_bytes_over_ceiling(mock_drive):
+    from gsuite_mcp.server import upload_file_start
+    result = await upload_file_start(
+        file_name="x", mime_type="text/plain",
+        total_bytes=upload_session.MAX_UPLOAD_BYTES + 1,
+    )
+    assert result["error"] == "FILE_TOO_LARGE"
+
+
+@pytest.mark.asyncio
 async def test_upload_file_start_refuses_trashed_file_id(mock_drive):
     mock_drive.files().get.return_value.execute.return_value = {
         "name": "x", "trashed": True, "trashedTime": "2026-08-05T00:00:00Z",

@@ -30,6 +30,14 @@ def test_start_session_rejects_non_positive_total_bytes():
         )
 
 
+def test_start_session_rejects_total_bytes_over_ceiling():
+    with pytest.raises(ValueError):
+        upload_session.start_session(
+            file_name="x", mime_type="text/plain",
+            total_bytes=upload_session.MAX_UPLOAD_BYTES + 1,
+        )
+
+
 def test_write_chunk_accumulates_bytes_in_order():
     result = upload_session.start_session(
         file_name="archive.md", mime_type="text/markdown", total_bytes=11,

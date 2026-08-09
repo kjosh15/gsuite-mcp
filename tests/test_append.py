@@ -256,6 +256,47 @@ async def test_append_to_google_doc_post_write_revision_lookup_failure():
 
 
 @pytest.mark.asyncio
+async def test_append_to_google_doc_pre_write_revision_lookup_failure():
+    """revisions().list() raising on the PRE-write call must not abort the
+    append; revision_id_before falls back to None and the write still
+    happens, with revision_id_after computed normally from the next call."""
+    with patch("gsuite_mcp.auth.get_drive_service") as mock_drive, \
+         patch("gsuite_mcp.auth.get_docs_service") as mock_docs:
+        drive = MagicMock()
+        docs = MagicMock()
+        mock_drive.return_value = drive
+        mock_docs.return_value = docs
+
+        drive.files().get.return_value.execute.return_value = {
+            "name": "Index", "mimeType": "application/vnd.google-apps.document",
+            "modifiedTime": "2026-04-10T12:00:00Z",
+        }
+        docs.documents().get.return_value.execute.return_value = {
+            "body": {"content": [{"endIndex": 1}, {"endIndex": 42}]}
+        }
+        docs.documents().batchUpdate.return_value.execute.return_value = {}
+
+        call_count = {"n": 0}
+        def revisions_execute():
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise Exception("transient API error")
+            return {"revisions": [{"id": "rev_after"}]}
+        revisions_mock = MagicMock()
+        revisions_mock.execute = revisions_execute
+        drive.revisions().list.return_value = revisions_mock
+
+        from gsuite_mcp.server import append_to_file
+        result = await append_to_file(file_id="doc123", content="new line", separator="\n")
+
+        assert "error" not in result
+        assert result["mode"] == "docs_native"
+        assert result["revision_id_before"] is None
+        assert result["revision_id_after"] == "rev_after"
+        docs.documents().batchUpdate.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_append_to_file_rejects_expected_bytes_mismatch(mock_services):
     from gsuite_mcp.server import append_to_file
     result = await append_to_file(

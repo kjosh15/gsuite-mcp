@@ -230,7 +230,10 @@ async def search_files(service, query: str, max_results: int = 10) -> dict[str, 
                         f"genuinely-empty folder."
                     ),
                 }
-            raise
+            # Any other error (403 permissions, 429 rate limit, 5xx) means the
+            # probe itself is unreliable, not that the folder is missing. The
+            # probe only refines an empty result's label — it must never turn
+            # a previously-successful zero-result search into a hard failure.
 
     return {"files": [], "status": "empty"}
 

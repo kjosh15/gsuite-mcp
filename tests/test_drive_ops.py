@@ -133,6 +133,26 @@ async def test_search_files_returns_empty_status_when_parent_folder_exists_but_e
 
     result = await drive_ops.search_files(svc, "'real_folder' in parents")
     assert result["status"] == "empty"
+
+
+@pytest.mark.asyncio
+async def test_search_files_probe_non_404_error_falls_through_to_empty():
+    """A non-404 HttpError from the parent-folder existence probe (403
+    permissions, 429 rate limit, 5xx) must not propagate out of search_files
+    — it can only ever refine an empty result's label, never fail the
+    primary search itself."""
+    from googleapiclient.errors import HttpError
+
+    svc = MagicMock()
+    svc.files().list.return_value.execute.return_value = {"files": []}
+    response = MagicMock()
+    response.status = 403
+    svc.files().get.return_value.execute.side_effect = HttpError(
+        response, b"insufficient permissions"
+    )
+
+    result = await drive_ops.search_files(svc, "'some_folder' in parents")
+    assert result == {"files": [], "status": "empty"}
     assert "unresolved_reference" not in result
 
 

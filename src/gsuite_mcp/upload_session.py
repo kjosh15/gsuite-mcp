@@ -23,6 +23,13 @@ from uuid import uuid4
 
 SESSION_TTL_SECONDS = 30 * 60
 
+# On Cloud Run, /tmp (where the session's temp file lands, via tempfile.mkstemp)
+# is backed by instance memory (tmpfs), not disk. An unbounded total_bytes lets
+# a caller (buggy or malicious) exhaust the container's RAM. 25MB — larger than
+# text_ops.MAX_FILE_SIZE_BYTES (5MB) since chunked upload exists specifically
+# for payloads bigger than what text_replace's ceiling allows, but still bounded.
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+
 _SESSIONS: dict[str, dict[str, Any]] = {}
 
 
@@ -46,6 +53,15 @@ def start_session(
 ) -> dict[str, Any]:
     if total_bytes <= 0:
         raise ValueError("total_bytes must be positive.")
+    if total_bytes > MAX_UPLOAD_BYTES:
+        # Defense-in-depth: server.py's upload_file_start checks this same
+        # ceiling before calling in (so it can return a FILE_TOO_LARGE tool
+        # error), but this module is also usable directly, so it must not
+        # rely solely on the caller doing that check.
+        raise ValueError(
+            f"total_bytes ({total_bytes}) exceeds MAX_UPLOAD_BYTES "
+            f"({MAX_UPLOAD_BYTES})."
+        )
     _purge_expired()
     upload_id = uuid4().hex
     fd, temp_path = tempfile.mkstemp(prefix=f"gsuite_mcp_upload_{upload_id}_")
@@ -70,6 +86,7 @@ def get_session(upload_id: str) -> Optional[dict[str, Any]]:
 
 
 def write_chunk(upload_id: str, chunk_index: int, chunk_bytes: bytes) -> dict[str, Any]:
+    _purge_expired()
     session = _SESSIONS.get(upload_id)
     if session is None:
         raise KeyError(upload_id)
@@ -92,6 +109,7 @@ def write_chunk(upload_id: str, chunk_index: int, chunk_bytes: bytes) -> dict[st
 
 
 def finish_session(upload_id: str) -> dict[str, Any]:
+    _purge_expired()
     session = _SESSIONS.get(upload_id)
     if session is None:
         raise KeyError(upload_id)
