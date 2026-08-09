@@ -2,10 +2,17 @@
 
 import asyncio
 import base64
+import hashlib
 import io
+import os
+import re
 from typing import Any, Optional
 
-from googleapiclient.http import MediaIoBaseUpload
+from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload
+
+
+_PARENT_QUERY_RE = re.compile(r"'([^']+)'\s+in\s+parents")
 
 
 async def download_file(
@@ -52,19 +59,14 @@ async def download_file_bytes(service, file_id: str) -> bytes:
     )
 
 
-async def upload_file(
+async def _upload_media(
     service,
-    content_base64: str,
+    media,
     file_name: str,
-    mime_type: str,
-    file_id: Optional[str] = None,
-    parent_folder_id: Optional[str] = None,
+    file_id: Optional[str],
+    parent_folder_id: Optional[str],
+    bytes_uploaded: int,
 ) -> dict[str, Any]:
-    file_bytes = base64.b64decode(content_base64)
-    bytes_uploaded = len(file_bytes)
-    media = MediaIoBaseUpload(
-        io.BytesIO(file_bytes), mimetype=mime_type, resumable=True
-    )
     if file_id:
         result = await asyncio.to_thread(
             lambda: service.files()
@@ -110,6 +112,72 @@ async def upload_file(
     }
 
 
+async def upload_file(
+    service,
+    content_base64: str,
+    file_name: str,
+    mime_type: str,
+    file_id: Optional[str] = None,
+    parent_folder_id: Optional[str] = None,
+    expected_bytes: Optional[int] = None,
+    expected_sha256: Optional[str] = None,
+) -> dict[str, Any]:
+    file_bytes = base64.b64decode(content_base64)
+    bytes_uploaded = len(file_bytes)
+    if expected_bytes is not None and bytes_uploaded != expected_bytes:
+        return {
+            "error": "PAYLOAD_SIZE_MISMATCH",
+            "retryable": True,
+            "expected_bytes": expected_bytes,
+            "actual_bytes": bytes_uploaded,
+            "message": (
+                f"Received {bytes_uploaded} bytes but expected_bytes was "
+                f"{expected_bytes}. The payload may have been truncated in "
+                f"transit. Nothing was written."
+            ),
+        }
+    if expected_sha256 is not None:
+        actual_hash = hashlib.sha256(file_bytes).hexdigest()
+        if actual_hash != expected_sha256:
+            return {
+                "error": "PAYLOAD_HASH_MISMATCH",
+                "retryable": True,
+                "expected_sha256": expected_sha256,
+                "actual_sha256": actual_hash,
+                "message": (
+                    "Received payload's sha256 does not match "
+                    "expected_sha256. The payload may have been corrupted "
+                    "in transit. Nothing was written."
+                ),
+            }
+    media = MediaIoBaseUpload(
+        io.BytesIO(file_bytes), mimetype=mime_type, resumable=True
+    )
+    return await _upload_media(
+        service, media, file_name, file_id, parent_folder_id, bytes_uploaded
+    )
+
+
+async def upload_file_from_path(
+    service,
+    file_path: str,
+    file_name: str,
+    mime_type: str,
+    file_id: Optional[str] = None,
+    parent_folder_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Upload a file already on local disk, streaming it instead of holding
+    it as an in-memory base64 payload. Used by the chunked-upload flow
+    (upload_file_start/upload_file_chunk/upload_file_finish) once all chunks
+    have been assembled into a temp file — see upload_session.py.
+    """
+    bytes_uploaded = os.path.getsize(file_path)
+    media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
+    return await _upload_media(
+        service, media, file_name, file_id, parent_folder_id, bytes_uploaded
+    )
+
+
 async def search_files(service, query: str, max_results: int = 10) -> dict[str, Any]:
     response = await asyncio.to_thread(
         lambda: service.files()
@@ -134,7 +202,40 @@ async def search_files(service, query: str, max_results: int = 10) -> dict[str, 
         if f.get("trashedTime"):
             entry["trashed_time"] = f["trashedTime"]
         files.append(entry)
-    return {"files": files}
+
+    if files:
+        return {"files": files, "status": "results"}
+
+    # Zero results: distinguish a genuinely-empty match from a query that
+    # references a parent folder that doesn't exist or isn't accessible —
+    # both look identical as a bare empty list otherwise.
+    match = _PARENT_QUERY_RE.search(query)
+    if match:
+        parent_id = match.group(1)
+        try:
+            await asyncio.to_thread(
+                lambda: service.files().get(fileId=parent_id, fields="id").execute()
+            )
+        except HttpError as exc:
+            status = exc.resp.status if exc.resp else 0
+            if status == 404:
+                return {
+                    "files": [],
+                    "status": "unresolved",
+                    "unresolved_reference": parent_id,
+                    "message": (
+                        f"Query referenced parent folder {parent_id!r}, "
+                        f"which does not exist or is not accessible. Zero "
+                        f"results reflects a bad reference, not a "
+                        f"genuinely-empty folder."
+                    ),
+                }
+            # Any other error (403 permissions, 429 rate limit, 5xx) means the
+            # probe itself is unreliable, not that the folder is missing. The
+            # probe only refines an empty result's label — it must never turn
+            # a previously-successful zero-result search into a hard failure.
+
+    return {"files": [], "status": "empty"}
 
 
 async def get_file_metadata(service, file_id: str) -> dict[str, Any]:
@@ -142,21 +243,36 @@ async def get_file_metadata(service, file_id: str) -> dict[str, Any]:
         lambda: service.files()
         .get(
             fileId=file_id,
-            fields="id,name,mimeType,size,modifiedTime,webViewLink,parents,capabilities,trashed,trashedTime",
+            fields=(
+                "id,name,mimeType,size,modifiedTime,webViewLink,parents,"
+                "capabilities,trashed,trashedTime,md5Checksum"
+            ),
         )
         .execute()
     )
-    result = {
+    mime_type = metadata.get("mimeType", "")
+    result: dict[str, Any] = {
         "file_id": metadata["id"],
         "name": metadata["name"],
-        "mime_type": metadata.get("mimeType", ""),
-        "size_bytes": int(metadata.get("size", 0)),
+        "mime_type": mime_type,
         "modified_time": metadata.get("modifiedTime", ""),
         "web_view_link": metadata.get("webViewLink", ""),
         "parents": metadata.get("parents", []),
         "capabilities": metadata.get("capabilities", {}),
         "trashed": metadata.get("trashed", False),
     }
+    # Drive's `size` field for native Google formats (Docs, Sheets, Slides)
+    # reflects internal storage quota usage, not the exported byte count —
+    # it can be wildly wrong (observed: reported 64707 vs actual 162908).
+    # Returning it as size_bytes would silently poison any byte-comparison
+    # gate. Flag it unavailable instead of returning a number that lies.
+    if mime_type.startswith("application/vnd.google-apps."):
+        result["size_bytes"] = None
+        result["size_unavailable"] = True
+    else:
+        result["size_bytes"] = int(metadata.get("size", 0))
+    if metadata.get("md5Checksum"):
+        result["md5_checksum"] = metadata["md5Checksum"]
     if metadata.get("trashedTime"):
         result["trashed_time"] = metadata["trashedTime"]
     return result

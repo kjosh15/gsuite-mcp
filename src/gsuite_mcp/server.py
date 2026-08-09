@@ -1,6 +1,8 @@
 """Google Workspace MCP server — thin wrappers over *_ops modules."""
 
 import asyncio
+import base64
+import hashlib
 import logging
 import os
 import re
@@ -10,7 +12,17 @@ from typing import Any, Optional
 from fastmcp import FastMCP
 from googleapiclient.errors import HttpError
 
-from gsuite_mcp import auth, docs_ops, docx_edits, drive_ops, gdoc_ops, gmail_ops, sheets_ops, text_ops
+from gsuite_mcp import (
+    auth,
+    docs_ops,
+    docx_edits,
+    drive_ops,
+    gdoc_ops,
+    gmail_ops,
+    sheets_ops,
+    text_ops,
+    upload_session,
+)
 from gsuite_mcp.retry import TRANSIENT_CODES
 from gsuite_mcp.api_key_middleware import APIKeyMiddleware
 
@@ -38,6 +50,30 @@ def _trashed_error(file_id: str, meta: dict) -> dict[str, Any]:
     }
 
 
+def _normalize_batch_edit(
+    edit: dict[str, Any],
+    find_key: str,
+    replace_key: str,
+    alias_find_key: str,
+    alias_replace_key: str,
+) -> dict[str, Any]:
+    """Map an edit dict's alias find/replace keys onto the canonical pair.
+
+    Lets text_batch_replace accept gdoc_batch_replace's find_text/replace_text
+    keys and vice versa, without requiring both pairs to be present at once.
+    If neither pair is fully present, returns edit unchanged so the existing
+    per-tool validation reports the missing-field error.
+    """
+    if find_key in edit and replace_key in edit:
+        return edit
+    if alias_find_key in edit and alias_replace_key in edit:
+        normalized = dict(edit)
+        normalized[find_key] = normalized.pop(alias_find_key)
+        normalized[replace_key] = normalized.pop(alias_replace_key)
+        return normalized
+    return edit
+
+
 @mcp.tool()
 async def download_file(
     file_id: str,
@@ -59,8 +95,16 @@ async def upload_file(
     mime_type: str,
     file_id: Optional[str] = None,
     parent_folder_id: Optional[str] = None,
+    expected_bytes: Optional[int] = None,
+    expected_sha256: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Upload a file to Google Drive (create or update)."""
+    """Upload a file to Google Drive (create or update).
+
+    expected_bytes/expected_sha256, if given, are checked against the
+    decoded content_base64 payload before any Drive API call. On mismatch,
+    returns PAYLOAD_SIZE_MISMATCH or PAYLOAD_HASH_MISMATCH and writes
+    nothing — this converts silent truncation/corruption of a large
+    base64 payload into a loud, retryable failure."""
     if file_id:
         drive = auth.get_drive_service()
         meta = await asyncio.to_thread(
@@ -77,12 +121,160 @@ async def upload_file(
         mime_type,
         file_id,
         parent_folder_id,
+        expected_bytes=expected_bytes,
+        expected_sha256=expected_sha256,
     )
 
 
 @mcp.tool()
+async def upload_file_start(
+    file_name: str,
+    mime_type: str,
+    total_bytes: int,
+    file_id: Optional[str] = None,
+    parent_folder_id: Optional[str] = None,
+    expected_sha256: Optional[str] = None,
+) -> dict[str, Any]:
+    """Begin a chunked upload for files too large to send as one upload_file call.
+
+    Large content_base64 payloads generated in a single tool call can arrive
+    truncated or corrupted. This spreads the payload across several
+    upload_file_chunk calls instead: call upload_file_start once, then
+    upload_file_chunk repeatedly with sequential chunk_index starting at 0,
+    then upload_file_finish exactly once.
+
+    Sessions expire after 30 minutes of inactivity and do not survive a
+    server restart — upload_file_finish (or upload_file_chunk) returns
+    UPLOAD_NOT_FOUND if the session is gone; restart from upload_file_start.
+
+    expected_sha256, if given, is checked against the fully-assembled file
+    in upload_file_finish before it is written to Drive."""
+    if total_bytes <= 0:
+        return {
+            "error": "INVALID_INPUT",
+            "retryable": False,
+            "message": "total_bytes must be positive.",
+        }
+    if total_bytes > upload_session.MAX_UPLOAD_BYTES:
+        return {
+            "error": "FILE_TOO_LARGE",
+            "retryable": False,
+            "message": (
+                f"total_bytes ({total_bytes}) exceeds the "
+                f"{upload_session.MAX_UPLOAD_BYTES}-byte chunked-upload limit."
+            ),
+        }
+    if file_id:
+        drive = auth.get_drive_service()
+        meta = await asyncio.to_thread(
+            lambda: drive.files()
+            .get(fileId=file_id, fields="name,trashed,trashedTime")
+            .execute()
+        )
+        if meta.get("trashed"):
+            return _trashed_error(file_id, meta)
+    session = upload_session.start_session(
+        file_name=file_name,
+        mime_type=mime_type,
+        total_bytes=total_bytes,
+        file_id=file_id,
+        parent_folder_id=parent_folder_id,
+        expected_sha256=expected_sha256,
+    )
+    return {"upload_id": session["upload_id"], "chunk_size_hint": 16384}
+
+
+@mcp.tool()
+async def upload_file_chunk(
+    upload_id: str,
+    chunk_base64: str,
+    chunk_index: int,
+) -> dict[str, Any]:
+    """Send one chunk of a file started with upload_file_start.
+
+    chunk_index must be sequential starting at 0 (0, 1, 2, ...); an
+    out-of-order or repeated index is rejected with INVALID_CHUNK."""
+    try:
+        chunk_bytes = base64.b64decode(chunk_base64, validate=True)
+    except Exception:
+        return {
+            "error": "INVALID_BASE64",
+            "retryable": True,
+            "message": "chunk_base64 did not decode as valid base64.",
+        }
+    try:
+        result = upload_session.write_chunk(upload_id, chunk_index, chunk_bytes)
+    except KeyError:
+        return {
+            "error": "UPLOAD_NOT_FOUND",
+            "retryable": False,
+            "message": (
+                f"No active upload session {upload_id!r}. It may have "
+                f"expired (30 min TTL) or the server restarted. Restart "
+                f"with upload_file_start."
+            ),
+        }
+    except ValueError as e:
+        return {"error": "INVALID_CHUNK", "retryable": True, "message": str(e)}
+    return {"upload_id": upload_id, **result}
+
+
+@mcp.tool()
+async def upload_file_finish(upload_id: str) -> dict[str, Any]:
+    """Assemble a chunked upload's bytes and write it to Drive.
+
+    Verifies the assembled byte count matches total_bytes from
+    upload_file_start, and the sha256 hash if expected_sha256 was given.
+    Returns the same shape as upload_file's success response. The session
+    (and its temp file) is deleted whether this succeeds or fails."""
+    try:
+        session = upload_session.finish_session(upload_id)
+    except KeyError:
+        return {
+            "error": "UPLOAD_NOT_FOUND",
+            "retryable": False,
+            "message": (
+                f"No active upload session {upload_id!r}. It may have "
+                f"expired (30 min TTL) or the server restarted. Restart "
+                f"with upload_file_start."
+            ),
+        }
+    except ValueError as e:
+        upload_session.cleanup(upload_id)
+        return {
+            "error": "INCOMPLETE_OR_CORRUPT_UPLOAD",
+            "retryable": True,
+            "message": str(e),
+        }
+
+    try:
+        drive = auth.get_drive_service()
+        return await drive_ops.upload_file_from_path(
+            drive,
+            file_path=session["temp_path"],
+            file_name=session["file_name"],
+            mime_type=session["mime_type"],
+            file_id=session["file_id"],
+            parent_folder_id=session["parent_folder_id"],
+        )
+    finally:
+        upload_session.cleanup(upload_id)
+
+
+@mcp.tool()
 async def search_files(query: str, max_results: int = 10) -> dict[str, Any]:
-    """Search Google Drive for files. Uses Drive API query syntax."""
+    """Search Google Drive for files. Uses Drive API query syntax.
+
+    Zero-result responses carry status: "results" | "empty" | "unresolved".
+    "unresolved" applies when the query is a `'<id>' in parents` clause
+    whose folder doesn't exist or isn't accessible — distinguishing that
+    from a folder that genuinely has no matching files (status: "empty").
+
+    Known Drive API limitation: `name contains 'X'` tokenizes on word
+    boundaries and will not match a substring inside a word (e.g. 'eport'
+    won't match 'report.docx'). For a substring match, use `name = 'exact
+    name'` for an exact match, or list the parent folder
+    (`'<folder_id>' in parents`) with max_results above its file count."""
     return await drive_ops.search_files(auth.get_drive_service(), query, max_results)
 
 
@@ -109,6 +301,8 @@ async def append_to_file(
     file_id: str,
     content: str,
     separator: str = "\n",
+    expected_bytes: Optional[int] = None,
+    expected_sha256: Optional[str] = None,
 ) -> dict[str, Any]:
     """Append content to a file. Uses native API where possible.
 
@@ -116,8 +310,42 @@ async def append_to_file(
     - Google Sheets: Sheets API values.append (rows split on newline, cols on comma)
     - Other files: download-concat-upload fallback
 
+    expected_bytes/expected_sha256, if given, are checked against the exact
+    bytes about to be sent (separator + content, UTF-8 encoded) before any
+    Drive API call. On mismatch, returns PAYLOAD_SIZE_MISMATCH or
+    PAYLOAD_HASH_MISMATCH and writes nothing.
+
     Returns {file_id, file_name, mime_type, bytes_appended, modified_time, mode}.
+    For Google Docs/Sheets, also returns revision_id_before/revision_id_after
+    (Drive revision IDs) — a monotonic verification handle, unlike
+    modified_time, which can lag under Drive API eventual consistency even
+    though this tool always re-reads it post-write.
     Refuses trashed files with error: TRASHED_FILE."""
+    payload_bytes = (separator + content).encode("utf-8")
+    if expected_bytes is not None and len(payload_bytes) != expected_bytes:
+        return {
+            "error": "PAYLOAD_SIZE_MISMATCH",
+            "retryable": True,
+            "expected_bytes": expected_bytes,
+            "actual_bytes": len(payload_bytes),
+            "message": (
+                f"Received {len(payload_bytes)} bytes but expected_bytes "
+                f"was {expected_bytes}. Nothing was written."
+            ),
+        }
+    if expected_sha256 is not None:
+        actual_hash = hashlib.sha256(payload_bytes).hexdigest()
+        if actual_hash != expected_sha256:
+            return {
+                "error": "PAYLOAD_HASH_MISMATCH",
+                "retryable": True,
+                "expected_sha256": expected_sha256,
+                "actual_sha256": actual_hash,
+                "message": (
+                    "Received content's sha256 does not match "
+                    "expected_sha256. Nothing was written."
+                ),
+            }
     drive = auth.get_drive_service()
     meta = await asyncio.to_thread(
         lambda: drive.files()
@@ -128,6 +356,23 @@ async def append_to_file(
         return _trashed_error(file_id, meta)
     mime = meta.get("mimeType", "")
     name = meta.get("name", "")
+
+    is_native = mime in (GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME)
+    revision_id_before = None
+    if is_native:
+        # Best-effort informational lookup: this runs before the mutation, so
+        # a failure here must never surface as an error for the caller — fall
+        # back to None rather than let the exception abort the write itself.
+        try:
+            rev_resp = await asyncio.to_thread(
+                lambda: drive.revisions()
+                .list(fileId=file_id, fields="revisions(id)", pageSize=1000)
+                .execute()
+            )
+            revisions = rev_resp.get("revisions", [])
+            revision_id_before = revisions[-1]["id"] if revisions else None
+        except Exception:
+            revision_id_before = None
 
     if mime == GOOGLE_DOC_MIME:
         docs = auth.get_docs_service()
@@ -169,7 +414,7 @@ async def append_to_file(
         modified_time = upload_result.get("modified_time", "")
         ops_result = {"bytes_appended": len(to_append)}
 
-    return {
+    result = {
         "file_id": file_id,
         "file_name": name,
         "mime_type": mime,
@@ -177,6 +422,25 @@ async def append_to_file(
         "modified_time": modified_time,
         "mode": mode,
     }
+    if is_native:
+        result["revision_id_before"] = revision_id_before
+        # Best-effort informational lookup: the write has already landed, so a
+        # failure here must never surface as an error for the caller — fall
+        # back to None rather than let the exception propagate and turn a
+        # successful write into a reported failure.
+        try:
+            rev_resp_after = await asyncio.to_thread(
+                lambda: drive.revisions()
+                .list(fileId=file_id, fields="revisions(id)", pageSize=1000)
+                .execute()
+            )
+            revisions_after = rev_resp_after.get("revisions", [])
+            result["revision_id_after"] = (
+                revisions_after[-1]["id"] if revisions_after else None
+            )
+        except Exception:
+            result["revision_id_after"] = None
+    return result
 
 
 @mcp.tool()
@@ -736,7 +1000,7 @@ async def gdoc_batch_replace(
     Accepts an array of find/replace pairs applied atomically in one
     batchUpdate. Supports cross-paragraph matches. Preserves file ID.
 
-    Each edit: {find_text: str, replace_text: str, expected_count?: int}.
+    Each edit: {find_text: str, replace_text: str, expected_count?: int}. Also accepts find/replace as aliases (text_batch_replace's key names).
     If any pair's expected_count doesn't match, the entire batch aborts.
 
     dry_run=True returns per-pair match counts without writing.
@@ -802,6 +1066,10 @@ async def gdoc_batch_replace(
             "retryable": False,
             "message": "edits array must not be empty.",
         }
+    edits = [
+        _normalize_batch_edit(e, "find_text", "replace_text", "find", "replace")
+        for e in edits
+    ]
     for i, edit in enumerate(edits):
         if "find_text" not in edit or "replace_text" not in edit:
             return {
@@ -955,7 +1223,8 @@ async def text_batch_replace(
     the whole file, send only the find/replace pairs.
 
     Each edit: {find: str, replace: str, expected_count?: int, match_case?:
-    bool, regex?: bool}. Edits apply sequentially in array order — edit N
+    bool, regex?: bool}. Also accepts find_text/replace_text as aliases (gdoc_batch_replace's key names).
+    Edits apply sequentially in array order — edit N
     sees the result of edits 1..N-1 (same contract as gdoc_batch_replace).
     All-or-nothing: if any edit's expected_count doesn't match, the entire
     batch aborts before any write; BATCH_ABORTED names the failing edit's
@@ -980,6 +1249,10 @@ async def text_batch_replace(
             "retryable": False,
             "message": "edits array must not be empty.",
         }
+    edits = [
+        _normalize_batch_edit(e, "find", "replace", "find_text", "replace_text")
+        for e in edits
+    ]
     for i, edit in enumerate(edits):
         if "find" not in edit or "replace" not in edit:
             return {
