@@ -126,3 +126,89 @@ async def test_append_to_plain_file_roundtrips(mock_services):
     assert result["bytes_appended"] == len(b"\nnew line")
     # verify update was called with concatenated content
     drive.files().update.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_append_to_google_doc_returns_revision_ids(mock_services):
+    drive = mock_services["drive"]
+    docs = mock_services["docs"]
+
+    drive.files().get.return_value.execute.return_value = {
+        "name": "Index", "mimeType": "application/vnd.google-apps.document",
+        "modifiedTime": "2026-04-10T12:00:00Z",
+    }
+    docs.documents().get.return_value.execute.return_value = {
+        "body": {"content": [{"endIndex": 1}, {"endIndex": 42}]}
+    }
+    docs.documents().batchUpdate.return_value.execute.return_value = {}
+
+    call_count = {"n": 0}
+    def revisions_execute():
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return {"revisions": [{"id": "rev_before"}]}
+        return {"revisions": [{"id": "rev_before"}, {"id": "rev_after"}]}
+    revisions_mock = MagicMock()
+    revisions_mock.execute = revisions_execute
+    drive.revisions().list.return_value = revisions_mock
+
+    from gsuite_mcp.server import append_to_file
+    result = await append_to_file(file_id="doc123", content="new line", separator="\n")
+
+    assert result["revision_id_before"] == "rev_before"
+    assert result["revision_id_after"] == "rev_after"
+
+
+@pytest.mark.asyncio
+async def test_append_to_google_sheet_returns_revision_ids(mock_services):
+    drive = mock_services["drive"]
+    sheets = mock_services["sheets"]
+
+    drive.files().get.return_value.execute.return_value = {
+        "name": "Pipeline", "mimeType": "application/vnd.google-apps.spreadsheet",
+        "modifiedTime": "2026-04-10T12:00:00Z",
+    }
+    sheets.spreadsheets().get.return_value.execute.return_value = {
+        "sheets": [{"properties": {"title": "Sheet1"}}],
+    }
+    sheets.spreadsheets().values().append.return_value.execute.return_value = {
+        "updates": {"updatedRange": "Sheet1!A42:C42"}
+    }
+
+    call_count = {"n": 0}
+    def revisions_execute():
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return {"revisions": [{"id": "rev1"}]}
+        return {"revisions": [{"id": "rev1"}, {"id": "rev2"}]}
+    revisions_mock = MagicMock()
+    revisions_mock.execute = revisions_execute
+    drive.revisions().list.return_value = revisions_mock
+
+    from gsuite_mcp.server import append_to_file
+    result = await append_to_file(file_id="sheet123", content="a,b", separator="")
+
+    assert result["revision_id_before"] == "rev1"
+    assert result["revision_id_after"] == "rev2"
+
+
+@pytest.mark.asyncio
+async def test_append_to_plain_file_has_no_revision_ids(mock_services):
+    drive = mock_services["drive"]
+
+    drive.files().get.return_value.execute.return_value = {
+        "name": "notes.md", "mimeType": "text/markdown",
+        "modifiedTime": "2026-04-10T12:00:00Z",
+    }
+    drive.files().get_media.return_value.execute.return_value = b"existing content"
+    drive.files().update.return_value.execute.return_value = {
+        "id": "plain1", "name": "notes.md", "webViewLink": "https://example.com",
+        "version": "2", "modifiedTime": "2026-04-10T12:05:00Z",
+    }
+
+    from gsuite_mcp.server import append_to_file
+    result = await append_to_file(file_id="plain1", content="new line", separator="\n")
+
+    assert "revision_id_before" not in result
+    assert "revision_id_after" not in result
+    drive.revisions().list.assert_not_called()

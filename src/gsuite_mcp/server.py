@@ -141,6 +141,10 @@ async def append_to_file(
     - Other files: download-concat-upload fallback
 
     Returns {file_id, file_name, mime_type, bytes_appended, modified_time, mode}.
+    For Google Docs/Sheets, also returns revision_id_before/revision_id_after
+    (Drive revision IDs) — a monotonic verification handle, unlike
+    modified_time, which can lag under Drive API eventual consistency even
+    though this tool always re-reads it post-write.
     Refuses trashed files with error: TRASHED_FILE."""
     drive = auth.get_drive_service()
     meta = await asyncio.to_thread(
@@ -152,6 +156,17 @@ async def append_to_file(
         return _trashed_error(file_id, meta)
     mime = meta.get("mimeType", "")
     name = meta.get("name", "")
+
+    is_native = mime in (GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME)
+    revision_id_before = None
+    if is_native:
+        rev_resp = await asyncio.to_thread(
+            lambda: drive.revisions()
+            .list(fileId=file_id, fields="revisions(id)", pageSize=1000)
+            .execute()
+        )
+        revisions = rev_resp.get("revisions", [])
+        revision_id_before = revisions[-1]["id"] if revisions else None
 
     if mime == GOOGLE_DOC_MIME:
         docs = auth.get_docs_service()
@@ -193,7 +208,7 @@ async def append_to_file(
         modified_time = upload_result.get("modified_time", "")
         ops_result = {"bytes_appended": len(to_append)}
 
-    return {
+    result = {
         "file_id": file_id,
         "file_name": name,
         "mime_type": mime,
@@ -201,6 +216,18 @@ async def append_to_file(
         "modified_time": modified_time,
         "mode": mode,
     }
+    if is_native:
+        rev_resp_after = await asyncio.to_thread(
+            lambda: drive.revisions()
+            .list(fileId=file_id, fields="revisions(id)", pageSize=1000)
+            .execute()
+        )
+        revisions_after = rev_resp_after.get("revisions", [])
+        result["revision_id_before"] = revision_id_before
+        result["revision_id_after"] = (
+            revisions_after[-1]["id"] if revisions_after else None
+        )
+    return result
 
 
 @mcp.tool()
