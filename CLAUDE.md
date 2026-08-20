@@ -35,8 +35,8 @@ uv run python -m gsuite_mcp.auth_setup
 - `src/gsuite_mcp/gmail_quotes.py` — quoted-history stripping + html-to-text (pure functions)
 - `src/gsuite_mcp/retry.py` — retry helper with exponential backoff for transient Google API errors (5xx, 429)
 - `src/gsuite_mcp/api_key_middleware.py` — Starlette auth middleware (bearer token or `?key=` query param); 404s OAuth discovery probes (`/.well-known/oauth-*`, `openid-configuration`) *before* the auth check so MCP clients don't mistake it for an OAuth server
-- `src/gsuite_mcp/server.py` — FastMCP server exposing 28 tools (refuses to start without `GSUITE_MCP_API_KEY`)
-- `tests/` — pytest suite mirroring the module split (431 tests)
+- `src/gsuite_mcp/server.py` — FastMCP server exposing 28 tools (refuses to start without `GSUITE_MCP_API_KEY`) plus one custom HTTP route, `GET /warmup` (see Key Constraints)
+- `tests/` — pytest suite mirroring the module split (480 tests)
 - `docs/DEPLOYMENT.md` — deployment runbook (Cloud Run topology, Secret Manager layout, key rotation, smoke tests, client config)
 
 ## Tools
@@ -89,6 +89,7 @@ Optional:
 
 ## Key Constraints
 
+- `GET /warmup` pre-warms `auth._cached_credentials` (a process-global OAuth token, refreshed via a real network call to Google's token endpoint on first use — see `auth.get_credentials()`) without making any Drive/Docs/Gmail API call. Still gated by `APIKeyMiddleware` like every other path. Added because the Cloud Run `gdrive-mcp-keepwarm` Scheduler job (pings `/` every 5m) keeps the container process warm but never calls an authenticated tool, so it never exercises the OAuth-refresh path — the first real tool call on a given process still pays that cost. A second Scheduler job hits `/warmup` shortly before the earliest scheduled caller (daily-briefing at 03:05 UTC) so that cost is paid ahead of time instead of during the real call.
 - Auth is API-key only (bearer or `?key=`). The middleware returns **404** for OAuth discovery paths (`/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`, `/.well-known/openid-configuration`) *before* the key check — a `401` there makes claude.ai attempt OAuth Dynamic Client Registration, which fails ("Couldn't register with the sign-in service") and repeatedly drops the connector. The 404 lets the client fall back to the `?key=` URL.
 - No database, no state, no LLM calls
 - `upload_file_start`/`upload_file_chunk`/`upload_file_finish` are a deliberate, scoped exception to "no database, no state": chunked-upload sessions live only in process memory plus a per-session temp file, with a 30-minute TTL. They do not survive a Cloud Run instance restart or a scale event that routes a later call to a different instance — that surfaces as a loud `UPLOAD_NOT_FOUND`, never silent data loss. Added because the server has no shared filesystem with any caller (confirmed HTTP-only transport, see `server.py:main()`), so a `source_path`-style parameter cannot work here; large `content_base64` payloads must instead be split across multiple tool calls.

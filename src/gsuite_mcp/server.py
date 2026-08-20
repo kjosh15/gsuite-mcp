@@ -11,6 +11,8 @@ from typing import Any, Optional
 
 from fastmcp import FastMCP
 from googleapiclient.errors import HttpError
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response
 
 from gsuite_mcp import (
     auth,
@@ -1692,6 +1694,18 @@ async def read_document(
         result["comments_truncated"] = bool(comments.get("has_more"))
 
     return result
+
+
+@mcp.custom_route("/warmup", methods=["GET"])
+async def warmup(request: Request) -> Response:
+    """Pre-warm the cached OAuth credentials (see auth._cached_credentials).
+
+    Does nothing else — no Drive/Docs/Gmail API call — so a scheduled ping
+    here stays cheap while still paying the one-time token-refresh cost
+    ahead of the first real tool call on a fresh process.
+    """
+    auth.get_credentials()
+    return JSONResponse({"status": "warm"})
 
 
 def main() -> None:

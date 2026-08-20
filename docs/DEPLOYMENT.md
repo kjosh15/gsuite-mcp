@@ -76,6 +76,33 @@ gcloud scheduler jobs delete  gdrive-mcp-keepwarm --location=us-central1 --proje
   instead of the margin approach, use `gcloud run services update gdrive-mcp
   --min-instances=1` (~$8/mo).
 
+### OAuth-refresh warmup (`/warmup`)
+
+The keep-warm ping above only warms the container process — it's unauthenticated,
+so it never calls `auth.get_credentials()`. That function caches OAuth credentials
+in a process-global (`auth._cached_credentials`), refreshed via a real network
+round-trip to `oauth2.googleapis.com/token` on first use per process. Even with
+the container warm, the *first authenticated tool call* on a given process still
+pays that refresh cost — this showed up as the daily-briefing routine (03:05 UTC,
+the earliest scheduled caller) taking 2–4s on its first tool call while nothing
+else in the run saw it.
+
+Fix: `GET /warmup` (API-key gated like every other path) calls
+`auth.get_credentials()` and nothing else — no Drive/Docs/Gmail API call — so it
+stays a cheap ping. A second Scheduler job hits it ~10 min ahead of the earliest
+caller:
+
+```bash
+gcloud scheduler jobs create http gdrive-mcp-warmup \
+  --project=gdrive-mcp-492818 --location=us-central1 \
+  --schedule="55 2 * * *" --time-zone="UTC" \
+  --uri="https://gdrive-mcp-6y4n7a6f2a-uc.a.run.app/warmup" \
+  --http-method=GET \
+  --update-headers="Authorization=Bearer <GSUITE_MCP_API_KEY>" \
+  --attempt-deadline=30s \
+  --description="Pre-warm OAuth credential cache ahead of the 03:05 UTC daily-briefing run"
+```
+
 ## Auth model
 
 Two layers, both required on every request:
