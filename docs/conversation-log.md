@@ -1301,3 +1301,22 @@ docs/conversation-log.md
 5aaf02d 📝 Claude session #77: 2026-08-09 20:28:54
 ```
 
+
+## Session: 2026-08-20 14:57:30
+
+### Files Modified:
+```
+CLAUDE.md
+docs/DEPLOYMENT.md
+docs/conversation-log.md
+src/gsuite_mcp/server.py
+tests/test_warmup_route.py
+```
+
+### Recent Commits:
+```
+11f6096 Add /warmup route to pre-warm OAuth credential cache
+cdde0ca 📝 Claude session #80: 2026-08-09 21:18:27
+64281d2 📝 Claude session #79: 2026-08-09 21:15:17
+```
+
