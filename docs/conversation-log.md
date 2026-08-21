@@ -1320,3 +1320,19 @@ cdde0ca 📝 Claude session #80: 2026-08-09 21:18:27
 64281d2 📝 Claude session #79: 2026-08-09 21:15:17
 ```
 
+
+## Session: 2026-08-21 17:07:42
+
+### Files Modified:
+```
+CLAUDE.md
+docs/conversation-log.md
+```
+
+### Recent Commits:
+```
+24e56d1 📝 Claude session #81: 2026-08-20 14:57:30
+11f6096 Add /warmup route to pre-warm OAuth credential cache
+cdde0ca 📝 Claude session #80: 2026-08-09 21:18:27
+```
+
