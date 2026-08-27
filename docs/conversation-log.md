@@ -1390,3 +1390,19 @@ docs/conversation-log.md
 2ace2f0 📝 Claude session #83: 2026-08-25 10:43:02
 ```
 
+
+## Session: 2026-08-27 13:43:45
+
+### Files Modified:
+```
+CLAUDE.md
+docs/conversation-log.md
+```
+
+### Recent Commits:
+```
+b758e33 📝 Claude session #85: 2026-08-27 13:40:36
+0c79041 📝 Claude session #84: 2026-08-27 12:50:38
+2af8d86 Add set_list and clear_list actions to format_document
+```
+
