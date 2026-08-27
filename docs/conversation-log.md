@@ -1352,3 +1352,25 @@ c3d7c87 📝 Claude session #82: 2026-08-21 17:07:42
 11f6096 Add /warmup route to pre-warm OAuth credential cache
 ```
 
+
+## Session: 2026-08-27 12:50:38
+
+### Files Modified:
+```
+CLAUDE.md
+docs/conversation-log.md
+docs/plans/2026-08-27-format-document-list-actions-design.md
+src/gsuite_mcp/docs_ops.py
+src/gsuite_mcp/gdoc_ops.py
+src/gsuite_mcp/server.py
+tests/test_format_document.py
+tests/test_gdoc_template_populate.py
+```
+
+### Recent Commits:
+```
+2af8d86 Add set_list and clear_list actions to format_document
+2ace2f0 📝 Claude session #83: 2026-08-25 10:43:02
+c3d7c87 📝 Claude session #82: 2026-08-21 17:07:42
+```
+
