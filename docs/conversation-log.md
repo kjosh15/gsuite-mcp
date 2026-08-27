@@ -1374,3 +1374,19 @@ tests/test_gdoc_template_populate.py
 c3d7c87 📝 Claude session #82: 2026-08-21 17:07:42
 ```
 
+
+## Session: 2026-08-27 13:40:36
+
+### Files Modified:
+```
+CLAUDE.md
+docs/conversation-log.md
+```
+
+### Recent Commits:
+```
+0c79041 📝 Claude session #84: 2026-08-27 12:50:38
+2af8d86 Add set_list and clear_list actions to format_document
+2ace2f0 📝 Claude session #83: 2026-08-25 10:43:02
+```
+
