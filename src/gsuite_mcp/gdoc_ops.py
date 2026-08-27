@@ -29,6 +29,12 @@ async def template_populate(
 
     Uses Drive files.copy with mimeType conversion, then a single
     Docs batchUpdate with replaceAllText for each placeholder.
+
+    ``post_styles`` is forwarded verbatim to ``docs_ops.format_document`` as its
+    ``operations`` argument — the two share one schema, so every action
+    format_document supports (set_style, set_list, clear_list, delete, …),
+    including set_list's from_text/to_text range form, works here unchanged.
+    Its result is returned under ``post_styles_result``.
     """
     copy_body = {
         "name": new_title,

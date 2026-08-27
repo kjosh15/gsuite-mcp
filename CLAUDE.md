@@ -36,7 +36,7 @@ uv run python -m gsuite_mcp.auth_setup
 - `src/gsuite_mcp/retry.py` — retry helper with exponential backoff for transient Google API errors (5xx, 429)
 - `src/gsuite_mcp/api_key_middleware.py` — Starlette auth middleware (bearer token or `?key=` query param); 404s OAuth discovery probes (`/.well-known/oauth-*`, `openid-configuration`) *before* the auth check so MCP clients don't mistake it for an OAuth server
 - `src/gsuite_mcp/server.py` — FastMCP server exposing 28 tools (refuses to start without `GSUITE_MCP_API_KEY`) plus one custom HTTP route, `GET /warmup` (see Key Constraints)
-- `tests/` — pytest suite mirroring the module split (480 tests)
+- `tests/` — pytest suite mirroring the module split (510 tests)
 - `docs/DEPLOYMENT.md` — deployment runbook (Cloud Run topology, Secret Manager layout, key rotation, smoke tests, client config)
 
 ## Tools
@@ -52,11 +52,11 @@ uv run python -m gsuite_mcp.auth_setup
 9. `append_to_file` — native append for Docs/Sheets; roundtrip fallback for plain files. Returns `revision_id_before`/`revision_id_after` for Docs/Sheets (monotonic, unlike `modified_time`, which the tool already re-reads post-write but which can still lag under Drive API eventual consistency). Also accepts `expected_bytes`/`expected_sha256` to reject a corrupted payload before writing.
 10. `replace_text` — exact + regex replace in Google Docs. Supports `expected_count` (pre-check before mutation), `preceded_by`/`followed_by` (context-anchored filtering within 200-char window)
 11. `replace_section` — replace content by heading/section in Google Docs (heading detection + positional delete/insert). Supports `dry_run` (returns section span without writing), `expected_delete_chars` (precision check), `confirm_delete_chars` (bypass blast-radius guard). Returns `chars_deleted`, `chars_inserted`, `net_change`, `section_span`, `anchor_is_styled_heading`. NORMAL_TEXT fallback anchors flagged with `anchor_is_styled_heading: false`.
-12. `format_document` — batch paragraph formatting: set_style, set_text_style (bold/italic/underline/strikethrough), delete, delete_by_index, delete_empty_after, insert_paragraph (by index, inherits list formatting), insert_paragraph_after_match (by text match). Multi-match protection: >1 match fails unless `match_all: true`. `preview: true` for dry-run.
+12. `format_document` — batch paragraph formatting: set_style, set_text_style (bold/italic/underline/strikethrough), set_list/clear_list (bullets via createParagraphBullets/deleteParagraphBullets — `preset` is any Docs BulletGlyphPreset, default `BULLET_DISC_CIRCLE_SQUARE`, `NUMBERED_DECIMAL_ALPHA_ROMAN` for ordered; optional `nesting_level` indents 36pt/level; `from_text`/`to_text` range form bullets a run of consecutive paragraphs inclusive), delete, delete_by_index, delete_empty_after, insert_paragraph (by index, inherits list formatting), insert_paragraph_after_match (by text match). Multi-match protection: >1 match fails unless `match_all: true`. `preview: true` for dry-run.
 13. `manage_comments` — list/create/reply/resolve on Drive comments
 14. `docx_suggest_edit` — tracked-change revision marks in .docx files
 15. `create_reply_draft` — thread-aware Gmail draft creation (draft only, human sends)
-16. `gdoc_template_populate` — copy template → native Google Doc, replace placeholders
+16. `gdoc_template_populate` — copy template → native Google Doc, replace placeholders. `post_styles` takes exactly the same operation schema as `format_document`'s `operations` (same actions, same matching rules, set_list included).
 17. `gdoc_suggest_edit` — export Google Doc as .docx, apply tracked change, re-upload as new .docx
 18. `trash_file` — move a file to Drive trash (reversible within 30 days)
 19. `untrash_file` — restore a trashed file from Drive trash

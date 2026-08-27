@@ -72,6 +72,30 @@ VALID_NAMED_STYLES: set[str] = {
 
 VALID_TEXT_STYLE_KEYS = {"bold", "italic", "underline", "strikethrough"}
 
+# Docs API BulletGlyphPreset values accepted by createParagraphBullets.
+VALID_BULLET_PRESETS: set[str] = {
+    "BULLET_DISC_CIRCLE_SQUARE",
+    "BULLET_DIAMONDX_ARROW3D_SQUARE",
+    "BULLET_CHECKBOX",
+    "BULLET_ARROW_DIAMOND_DISC",
+    "BULLET_STAR_CIRCLE_SQUARE",
+    "BULLET_ARROW3D_CIRCLE_SQUARE",
+    "BULLET_LEFTTRIANGLE_DIAMOND_DISC",
+    "BULLET_DIAMONDX_HOLLOWDIAMOND_SQUARE",
+    "BULLET_DIAMOND_CIRCLE_SQUARE",
+    "NUMBERED_DECIMAL_ALPHA_ROMAN",
+    "NUMBERED_DECIMAL_ALPHA_ROMAN_PARENS",
+    "NUMBERED_DECIMAL_NESTED",
+    "NUMBERED_UPPERALPHA_ALPHA_ROMAN",
+    "NUMBERED_UPPERROMAN_UPPERALPHA_DECIMAL",
+    "NUMBERED_ZERODECIMAL_ALPHA_ROMAN",
+}
+
+DEFAULT_BULLET_PRESET = "BULLET_DISC_CIRCLE_SQUARE"
+
+# Google Docs' default indent step per list nesting level.
+_NESTING_INDENT_PT = 36
+
 
 def _validate_text_style(text_style: Any) -> str | None:
     """Validate a text_style dict. Returns error message or None if valid."""
@@ -961,6 +985,51 @@ def _clamp_delete_end(end_index: int, content: list[dict]) -> int:
     return end_index
 
 
+def _is_range_op(op: dict[str, Any]) -> bool:
+    """True if a set_list/clear_list operation uses the from_text/to_text form."""
+    return op.get("action") in ("set_list", "clear_list") and (
+        "from_text" in op or "to_text" in op
+    )
+
+
+def _bullet_requests(
+    action: str,
+    start_index: int,
+    end_index: int,
+    *,
+    preset: str = DEFAULT_BULLET_PRESET,
+    nesting_level: int | None = None,
+) -> list[dict]:
+    """Build the batchUpdate requests that bullet (or un-bullet) a span.
+
+    ``nesting_level`` is applied as an indent because the Docs API has no
+    nesting parameter on createParagraphBullets — list depth is driven by
+    paragraph indentation. Level 0 is left alone so Docs applies its own
+    default bullet indents.
+    """
+    rng = {"startIndex": start_index, "endIndex": end_index}
+    if action == "set_list":
+        requests: list[dict] = [
+            {"createParagraphBullets": {"range": rng, "bulletPreset": preset}}
+        ]
+    else:
+        requests = [{"deleteParagraphBullets": {"range": rng}}]
+
+    if action == "set_list" and nesting_level:
+        indent = nesting_level * _NESTING_INDENT_PT
+        requests.append({
+            "updateParagraphStyle": {
+                "range": rng,
+                "paragraphStyle": {
+                    "indentStart": {"magnitude": indent, "unit": "PT"},
+                    "indentFirstLine": {"magnitude": indent, "unit": "PT"},
+                },
+                "fields": "indentStart,indentFirstLine",
+            }
+        })
+    return requests
+
+
 async def format_document(
     docs_service,
     file_id: str,
@@ -1003,13 +1072,55 @@ async def format_document(
       Multi-match always returns error (no ``match_all`` support).
       Optional: ``text_style``, ``nesting_level``.
 
+    - ``{"action": "set_list", "find_text": "...", "preset": "BULLET_DISC_CIRCLE_SQUARE",
+      "nesting_level": 0}``
+      Turn matched paragraphs into list items via ``createParagraphBullets``.
+      ``preset`` is any Docs API BulletGlyphPreset (see ``VALID_BULLET_PRESETS``);
+      defaults to ``BULLET_DISC_CIRCLE_SQUARE`` for unordered, use
+      ``NUMBERED_DECIMAL_ALPHA_ROMAN`` for ordered. Invalid values return
+      ``INVALID_PRESET``.
+      ``nesting_level`` is optional (default 0). The Docs API has no nesting
+      parameter on ``createParagraphBullets`` — depth is driven by paragraph
+      indentation — so a non-zero level emits an extra ``updateParagraphStyle``
+      indenting by 36pt per level. Level 0 emits nothing extra, leaving the
+      Docs default bullet indents in place.
+      Same matching and multi-match rules as set_style: >1 match fails with
+      ``multi_match_error`` unless ``"match_all": true``.
+
+    - ``{"action": "set_list", "from_text": "First item", "to_text": "Last item",
+      "preset": "..."}``
+      Range form: bullets every paragraph from the ``from_text`` match through
+      the ``to_text`` match, inclusive — the common "four consecutive lines
+      under a heading" case, in one operation. Both endpoints must match
+      exactly one paragraph each (otherwise ``multi_match_error`` naming the
+      offending endpoint); a missing endpoint is ``not_found``; a ``to_text``
+      that resolves before ``from_text`` is ``invalid_range``. Emits a single
+      ``createParagraphBullets`` spanning the whole run.
+
+    - ``{"action": "clear_list", "find_text": "..."}``
+      Remove bullets from matched paragraphs via ``deleteParagraphBullets``.
+      Takes no ``preset``. Supports the same ``from_text``/``to_text`` range
+      form and the same matching/multi-match rules as set_list.
+
     Top-level options:
 
     - ``preview=True``: Return the list of paragraphs each operation would
       affect (paragraph index + first 80 chars + action) without executing.
+      set_list/clear_list report ``paragraph_indices`` — every paragraph the
+      operation would bullet — in both preview and applied results.
 
     Operations that cannot find their target are reported as ``not_found``
     but do not block other operations.
+
+    All operations are resolved against a single document read and sent as one
+    ``batchUpdate``, so ordering is predictable. Requests are sorted by
+    ``startIndex`` descending before sending: each request executes before any
+    earlier-in-the-document request that could shift its indices, so index
+    shifts caused by other operations in the same call (deletions, insertions,
+    the leading tabs ``createParagraphBullets`` strips) never invalidate the
+    indices of the operations that follow. Requests generated for the same
+    ``startIndex`` keep the order they were produced in — for set_list, bullets
+    are created before the nesting indent is applied.
     """
     # -- Validate ----------------------------------------------------------
     if not operations:
@@ -1019,7 +1130,7 @@ async def format_document(
             "message": "operations list must contain at least one operation.",
         }
 
-    valid_actions = {"set_style", "set_text_style", "delete", "delete_empty_after", "delete_by_index", "insert_paragraph", "insert_paragraph_after_match"}
+    valid_actions = {"set_style", "set_text_style", "delete", "delete_empty_after", "delete_by_index", "insert_paragraph", "insert_paragraph_after_match", "set_list", "clear_list"}
     for i, op in enumerate(operations):
         action = op.get("action")
         if action not in valid_actions:
@@ -1070,6 +1181,19 @@ async def format_document(
                     "retryable": False,
                     "message": f"Operation {i}: 'nesting_level' must be a non-negative integer.",
                 }
+        elif _is_range_op(op):
+            for key in ("from_text", "to_text"):
+                val = op.get(key)
+                if not isinstance(val, str) or not val.strip():
+                    return {
+                        "error": "MISSING_RANGE_TEXT",
+                        "retryable": False,
+                        "message": (
+                            f"Operation {i}: the range form needs both 'from_text' "
+                            f"and 'to_text' as non-blank strings ('{key}' is missing "
+                            f"or blank)."
+                        ),
+                    }
         else:
             find_text = op.get("find_text", "")
             if not isinstance(find_text, str) or not find_text.strip():
@@ -1090,14 +1214,39 @@ async def format_document(
                     ),
                 }
             if mm == "regex":
-                try:
-                    re.compile(op.get("find_text", ""))
-                except re.error as exc:
-                    return {
-                        "error": "INVALID_REGEX",
-                        "retryable": False,
-                        "message": f"Operation {i}: invalid regex '{op.get('find_text', '')}': {exc}",
-                    }
+                patterns = (
+                    [op.get("from_text", ""), op.get("to_text", "")]
+                    if _is_range_op(op)
+                    else [op.get("find_text", "")]
+                )
+                for pattern in patterns:
+                    try:
+                        re.compile(pattern)
+                    except re.error as exc:
+                        return {
+                            "error": "INVALID_REGEX",
+                            "retryable": False,
+                            "message": f"Operation {i}: invalid regex '{pattern}': {exc}",
+                        }
+        if action == "set_list":
+            preset = op.get("preset", DEFAULT_BULLET_PRESET)
+            if preset not in VALID_BULLET_PRESETS:
+                return {
+                    "error": "INVALID_PRESET",
+                    "retryable": False,
+                    "message": (
+                        f"Operation {i}: invalid preset '{preset}'. "
+                        f"Valid presets: {', '.join(sorted(VALID_BULLET_PRESETS))}."
+                    ),
+                }
+        if action in ("set_list", "clear_list"):
+            nl = op.get("nesting_level")
+            if nl is not None and (not isinstance(nl, int) or nl < 0):
+                return {
+                    "error": "INVALID_NESTING_LEVEL",
+                    "retryable": False,
+                    "message": f"Operation {i}: 'nesting_level' must be a non-negative integer.",
+                }
         if action == "set_style":
             style = op.get("style")
             if style not in VALID_NAMED_STYLES:
@@ -1282,6 +1431,93 @@ async def format_document(
                 })
             continue
 
+        # --- set_list / clear_list range form ------------------------------
+        if _is_range_op(op):
+            mm = op.get("match_mode", "exact")
+            if "match_mode" in op:
+                use_substring = False
+            else:
+                use_substring = bool(op.get("substring", False))
+
+            endpoints: dict[str, tuple[int, dict]] = {}
+            failed = False
+            for key in ("from_text", "to_text"):
+                endpoint_text = op[key]
+                endpoint_matches = _find_paragraphs_matching(
+                    content, endpoint_text, substring=use_substring, match_mode=mm,
+                )
+                if not endpoint_matches:
+                    results.append({
+                        "action": action,
+                        "find_text": endpoint_text,
+                        "endpoint": key,
+                        "status": "not_found",
+                    })
+                    failed = True
+                    break
+                if len(endpoint_matches) > 1:
+                    results.append({
+                        "action": action,
+                        "find_text": endpoint_text,
+                        "endpoint": key,
+                        "status": "multi_match_error",
+                        "matches": [
+                            {
+                                "paragraph_index": idx,
+                                "text": _para_text(blk["paragraph"]).strip()[:80],
+                            }
+                            for idx, blk in endpoint_matches
+                        ],
+                    })
+                    failed = True
+                    break
+                endpoints[key] = endpoint_matches[0]
+            if failed:
+                continue
+
+            from_idx, from_block = endpoints["from_text"]
+            to_idx, to_block = endpoints["to_text"]
+            entry: dict[str, Any] = {
+                "action": action,
+                "from_text": op["from_text"],
+                "to_text": op["to_text"],
+            }
+            if to_idx < from_idx:
+                entry.update({
+                    "status": "invalid_range",
+                    "from_paragraph_index": from_idx,
+                    "to_paragraph_index": to_idx,
+                })
+                results.append(entry)
+                continue
+
+            para_indices = [
+                idx
+                for idx in range(from_idx, to_idx + 1)
+                if content[idx].get("paragraph")
+            ]
+            nesting_level = op.get("nesting_level")
+            if action == "set_list":
+                entry["preset"] = op.get("preset", DEFAULT_BULLET_PRESET)
+                if nesting_level is not None:
+                    entry["nesting_level"] = nesting_level
+            entry["paragraph_indices"] = para_indices
+
+            if preview:
+                entry["status"] = "would_apply"
+            else:
+                for req in _bullet_requests(
+                    action,
+                    from_block["startIndex"],
+                    to_block["endIndex"],
+                    preset=entry.get("preset", DEFAULT_BULLET_PRESET),
+                    nesting_level=nesting_level,
+                ):
+                    pending.append((from_block["startIndex"], req))
+                entry["status"] = "applied"
+            results.append(entry)
+            continue
+
         # --- Text-matching actions ----------------------------------------
         find_text = op["find_text"]
         mm = op.get("match_mode", "exact")
@@ -1304,7 +1540,7 @@ async def format_document(
             continue
 
         # Multi-match protection for delete, set_style, and insert_paragraph_after_match
-        if action in ("delete", "set_style", "set_text_style", "insert_paragraph_after_match") and len(matches) > 1:
+        if action in ("delete", "set_style", "set_text_style", "insert_paragraph_after_match", "set_list", "clear_list") and len(matches) > 1:
             if not op.get("match_all", False) or action == "insert_paragraph_after_match":
                 results.append({
                     "action": action,
@@ -1389,6 +1625,30 @@ async def format_document(
                     "status": "applied",
                     "start_index": matches[0][1]["startIndex"],
                 })
+
+        elif action in ("set_list", "clear_list"):
+            nesting_level = op.get("nesting_level")
+            entry = {"action": action, "find_text": find_text}
+            if action == "set_list":
+                entry["preset"] = op.get("preset", DEFAULT_BULLET_PRESET)
+                if nesting_level is not None:
+                    entry["nesting_level"] = nesting_level
+            entry["paragraph_indices"] = [block_idx for block_idx, _ in matches]
+
+            if preview:
+                entry["status"] = "would_apply"
+            else:
+                for _, block in matches:
+                    for req in _bullet_requests(
+                        action,
+                        block["startIndex"],
+                        block["endIndex"],
+                        preset=entry.get("preset", DEFAULT_BULLET_PRESET),
+                        nesting_level=nesting_level,
+                    ):
+                        pending.append((block["startIndex"], req))
+                entry["status"] = "applied"
+            results.append(entry)
 
         elif action == "delete":
             total_chars = 0

@@ -183,3 +183,63 @@ async def test_template_populate_post_styles_none(mock_services):
     assert "post_styles_result" not in result
     # documents().get() should NOT be called (format_document not invoked)
     docs.documents().get.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_template_populate_post_styles_accepts_set_list(mock_services):
+    """post_styles shares format_document's operation schema, list actions included."""
+    drive = mock_services["drive"]
+    docs = mock_services["docs"]
+
+    drive.files().copy.return_value.execute.return_value = {
+        "id": "new_bulleted",
+        "name": "Bulleted Doc",
+        "webViewLink": "https://docs.google.com/document/d/new_bulleted/edit",
+    }
+    docs.documents().batchUpdate.return_value.execute.return_value = {
+        "replies": [{"replaceAllText": {"occurrencesChanged": 1}}]
+    }
+    docs.documents().get.return_value.execute.return_value = {
+        "body": {"content": [
+            {
+                "startIndex": 1, "endIndex": 13,
+                "paragraph": {
+                    "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+                    "elements": [{"startIndex": 1, "endIndex": 13,
+                                  "textRun": {"content": "First item\n"}}],
+                },
+            },
+            {
+                "startIndex": 13, "endIndex": 24,
+                "paragraph": {
+                    "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+                    "elements": [{"startIndex": 13, "endIndex": 24,
+                                  "textRun": {"content": "Last item\n"}}],
+                },
+            },
+        ]}
+    }
+
+    from gsuite_mcp.gdoc_ops import template_populate
+    result = await template_populate(
+        drive_service=drive,
+        docs_service=docs,
+        template_file_id="tmpl1",
+        parent_folder_id="folder1",
+        new_title="Bulleted Doc",
+        replacements={"{{NAME}}": "Alice"},
+        post_styles=[
+            {"action": "set_list", "from_text": "First item", "to_text": "Last item",
+             "preset": "BULLET_DISC_CIRCLE_SQUARE"},
+        ],
+    )
+
+    assert result["post_styles_result"]["results"][0]["status"] == "applied"
+    # Second batchUpdate (the post_styles one) carries the bullet request.
+    style_requests = docs.documents().batchUpdate.call_args.kwargs["body"]["requests"]
+    assert style_requests[0]["createParagraphBullets"]["range"] == {
+        "startIndex": 1, "endIndex": 24,
+    }
+    assert style_requests[0]["createParagraphBullets"]["bulletPreset"] == (
+        "BULLET_DISC_CIRCLE_SQUARE"
+    )

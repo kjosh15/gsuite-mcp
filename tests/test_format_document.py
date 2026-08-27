@@ -1291,3 +1291,409 @@ async def test_insert_after_match_missing_text():
         {"action": "insert_paragraph_after_match", "find_text": "x"},
     ])
     assert result["error"] == "MISSING_TEXT"
+
+
+# -------------------------------------------------------------------
+# format_document — set_list / clear_list
+# -------------------------------------------------------------------
+
+def _bullet_doc():
+    """Heading followed by four consecutive items and a trailing paragraph."""
+    return _make_doc(
+        (1, 10, "Findings\n", "HEADING_2"),
+        (10, 22, "First item\n", "NORMAL_TEXT"),
+        (22, 35, "Second item\n", "NORMAL_TEXT"),
+        (35, 47, "Third item\n", "NORMAL_TEXT"),
+        (47, 58, "Last item\n", "NORMAL_TEXT"),
+        (58, 70, "Conclusion\n", "NORMAL_TEXT"),
+    )
+
+
+def test_valid_bullet_presets_includes_unordered_and_ordered():
+    from gsuite_mcp.docs_ops import VALID_BULLET_PRESETS
+
+    assert "BULLET_DISC_CIRCLE_SQUARE" in VALID_BULLET_PRESETS
+    assert "NUMBERED_DECIMAL_ALPHA_ROMAN" in VALID_BULLET_PRESETS
+    assert "BULLET_CHECKBOX" in VALID_BULLET_PRESETS
+
+
+@pytest.mark.asyncio
+async def test_set_list_basic():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_list", "find_text": "First item",
+         "preset": "BULLET_DISC_CIRCLE_SQUARE"},
+    ])
+
+    assert "error" not in result
+    assert result["operations_applied"] == 1
+    entry = result["results"][0]
+    assert entry["action"] == "set_list"
+    assert entry["status"] == "applied"
+    assert entry["preset"] == "BULLET_DISC_CIRCLE_SQUARE"
+    assert entry["paragraph_indices"] == [1]
+
+    requests = svc.documents().batchUpdate.call_args.kwargs["body"]["requests"]
+    assert len(requests) == 1
+    req = requests[0]["createParagraphBullets"]
+    assert req["range"] == {"startIndex": 10, "endIndex": 22}
+    assert req["bulletPreset"] == "BULLET_DISC_CIRCLE_SQUARE"
+
+
+@pytest.mark.asyncio
+async def test_set_list_defaults_to_disc_preset():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_list", "find_text": "First item"},
+    ])
+    assert result["results"][0]["preset"] == "BULLET_DISC_CIRCLE_SQUARE"
+    requests = svc.documents().batchUpdate.call_args.kwargs["body"]["requests"]
+    assert requests[0]["createParagraphBullets"]["bulletPreset"] == "BULLET_DISC_CIRCLE_SQUARE"
+
+
+@pytest.mark.asyncio
+async def test_set_list_numbered_preset():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_list", "find_text": "First item",
+         "preset": "NUMBERED_DECIMAL_ALPHA_ROMAN"},
+    ])
+    assert result["results"][0]["status"] == "applied"
+    requests = svc.documents().batchUpdate.call_args.kwargs["body"]["requests"]
+    assert requests[0]["createParagraphBullets"]["bulletPreset"] == "NUMBERED_DECIMAL_ALPHA_ROMAN"
+
+
+@pytest.mark.asyncio
+async def test_set_list_invalid_preset():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_list", "find_text": "First item", "preset": "BULLET_SPARKLES"},
+    ])
+    assert result["error"] == "INVALID_PRESET"
+    assert result["retryable"] is False
+    svc.documents().batchUpdate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_list_missing_find_text():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_list"},
+    ])
+    assert result["error"] == "MISSING_FIND_TEXT"
+
+
+@pytest.mark.asyncio
+async def test_set_list_not_found():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_list", "find_text": "Nonexistent"},
+    ])
+    assert result["results"][0]["status"] == "not_found"
+    svc.documents().batchUpdate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_list_multi_match_error():
+    doc = _make_doc(
+        (1, 10, "Item A\n", "NORMAL_TEXT"),
+        (10, 20, "Item B\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "set_list", "find_text": "Item", "match_mode": "substring"},
+    ])
+    entry = result["results"][0]
+    assert entry["status"] == "multi_match_error"
+    assert [m["paragraph_index"] for m in entry["matches"]] == [0, 1]
+    assert entry["matches"][0]["text"] == "Item A"
+    svc.documents().batchUpdate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_list_match_all():
+    doc = _make_doc(
+        (1, 10, "Item A\n", "NORMAL_TEXT"),
+        (10, 20, "Item B\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "set_list", "find_text": "Item", "match_mode": "substring",
+         "match_all": True},
+    ])
+    assert result["results"][0]["status"] == "applied"
+    assert result["results"][0]["paragraph_indices"] == [0, 1]
+    requests = svc.documents().batchUpdate.call_args.kwargs["body"]["requests"]
+    assert len(requests) == 2
+    ranges = sorted(r["createParagraphBullets"]["range"]["startIndex"] for r in requests)
+    assert ranges == [1, 10]
+
+
+@pytest.mark.asyncio
+async def test_set_list_nesting_level_emits_indent():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_list", "find_text": "First item", "nesting_level": 2},
+    ])
+    assert result["results"][0]["nesting_level"] == 2
+    requests = svc.documents().batchUpdate.call_args.kwargs["body"]["requests"]
+    assert len(requests) == 2
+    # bullets created first, then the indent that sets the nesting level
+    assert "createParagraphBullets" in requests[0]
+    indent_req = requests[1]["updateParagraphStyle"]
+    assert indent_req["range"] == {"startIndex": 10, "endIndex": 22}
+    assert indent_req["paragraphStyle"]["indentStart"]["magnitude"] == 72
+    assert indent_req["fields"] == "indentStart,indentFirstLine"
+
+
+@pytest.mark.asyncio
+async def test_set_list_nesting_level_zero_emits_no_indent():
+    svc = _mock_docs_service(_bullet_doc())
+    await format_document(svc, "f1", [
+        {"action": "set_list", "find_text": "First item", "nesting_level": 0},
+    ])
+    requests = svc.documents().batchUpdate.call_args.kwargs["body"]["requests"]
+    assert len(requests) == 1
+    assert "createParagraphBullets" in requests[0]
+
+
+@pytest.mark.asyncio
+async def test_set_list_invalid_nesting_level():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_list", "find_text": "First item", "nesting_level": -1},
+    ])
+    assert result["error"] == "INVALID_NESTING_LEVEL"
+
+
+@pytest.mark.asyncio
+async def test_set_list_preview_reports_indices_without_writing():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_list", "find_text": "First item"},
+    ], preview=True)
+
+    assert result["preview"] is True
+    entry = result["results"][0]
+    assert entry["status"] == "would_apply"
+    assert entry["paragraph_indices"] == [1]
+    svc.documents().batchUpdate.assert_not_called()
+
+
+# --- range form -----------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_set_list_range_form_bullets_inclusive_span():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_list", "from_text": "First item", "to_text": "Last item",
+         "preset": "BULLET_DISC_CIRCLE_SQUARE"},
+    ])
+
+    entry = result["results"][0]
+    assert entry["status"] == "applied"
+    assert entry["from_text"] == "First item"
+    assert entry["to_text"] == "Last item"
+    assert entry["paragraph_indices"] == [1, 2, 3, 4]
+
+    requests = svc.documents().batchUpdate.call_args.kwargs["body"]["requests"]
+    assert len(requests) == 1
+    req = requests[0]["createParagraphBullets"]
+    assert req["range"] == {"startIndex": 10, "endIndex": 58}
+
+
+@pytest.mark.asyncio
+async def test_set_list_range_form_preview():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_list", "from_text": "First item", "to_text": "Last item"},
+    ], preview=True)
+    entry = result["results"][0]
+    assert entry["status"] == "would_apply"
+    assert entry["paragraph_indices"] == [1, 2, 3, 4]
+    svc.documents().batchUpdate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_list_range_single_paragraph():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_list", "from_text": "First item", "to_text": "First item"},
+    ])
+    assert result["results"][0]["paragraph_indices"] == [1]
+    requests = svc.documents().batchUpdate.call_args.kwargs["body"]["requests"]
+    assert requests[0]["createParagraphBullets"]["range"] == {"startIndex": 10, "endIndex": 22}
+
+
+@pytest.mark.asyncio
+async def test_set_list_range_missing_to_text():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_list", "from_text": "First item"},
+    ])
+    assert result["error"] == "MISSING_RANGE_TEXT"
+    assert result["retryable"] is False
+
+
+@pytest.mark.asyncio
+async def test_set_list_range_missing_from_text():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_list", "to_text": "Last item"},
+    ])
+    assert result["error"] == "MISSING_RANGE_TEXT"
+
+
+@pytest.mark.asyncio
+async def test_set_list_range_endpoint_not_found():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_list", "from_text": "First item", "to_text": "Missing item"},
+    ])
+    entry = result["results"][0]
+    assert entry["status"] == "not_found"
+    assert entry["find_text"] == "Missing item"
+    svc.documents().batchUpdate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_list_range_reversed_is_invalid():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_list", "from_text": "Last item", "to_text": "First item"},
+    ])
+    entry = result["results"][0]
+    assert entry["status"] == "invalid_range"
+    assert entry["from_paragraph_index"] == 4
+    assert entry["to_paragraph_index"] == 1
+    svc.documents().batchUpdate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_list_range_ambiguous_endpoint_multi_match_error():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_list", "from_text": "item", "to_text": "Last item",
+         "match_mode": "substring"},
+    ])
+    entry = result["results"][0]
+    assert entry["status"] == "multi_match_error"
+    assert entry["find_text"] == "item"
+    assert [m["paragraph_index"] for m in entry["matches"]] == [1, 2, 3, 4]
+    svc.documents().batchUpdate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_list_range_nesting_level():
+    svc = _mock_docs_service(_bullet_doc())
+    await format_document(svc, "f1", [
+        {"action": "set_list", "from_text": "First item", "to_text": "Last item",
+         "nesting_level": 1},
+    ])
+    requests = svc.documents().batchUpdate.call_args.kwargs["body"]["requests"]
+    assert len(requests) == 2
+    indent_req = requests[1]["updateParagraphStyle"]
+    assert indent_req["range"] == {"startIndex": 10, "endIndex": 58}
+    assert indent_req["paragraphStyle"]["indentStart"]["magnitude"] == 36
+
+
+# --- clear_list -----------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_clear_list_basic():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "clear_list", "find_text": "First item"},
+    ])
+    entry = result["results"][0]
+    assert entry["action"] == "clear_list"
+    assert entry["status"] == "applied"
+    assert entry["paragraph_indices"] == [1]
+
+    requests = svc.documents().batchUpdate.call_args.kwargs["body"]["requests"]
+    assert len(requests) == 1
+    assert requests[0]["deleteParagraphBullets"]["range"] == {
+        "startIndex": 10, "endIndex": 22,
+    }
+
+
+@pytest.mark.asyncio
+async def test_clear_list_range_form():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "clear_list", "from_text": "First item", "to_text": "Last item"},
+    ])
+    assert result["results"][0]["paragraph_indices"] == [1, 2, 3, 4]
+    requests = svc.documents().batchUpdate.call_args.kwargs["body"]["requests"]
+    assert requests[0]["deleteParagraphBullets"]["range"] == {
+        "startIndex": 10, "endIndex": 58,
+    }
+
+
+@pytest.mark.asyncio
+async def test_clear_list_multi_match_error():
+    doc = _make_doc(
+        (1, 10, "Item A\n", "NORMAL_TEXT"),
+        (10, 20, "Item B\n", "NORMAL_TEXT"),
+    )
+    svc = _mock_docs_service(doc)
+    result = await format_document(svc, "f1", [
+        {"action": "clear_list", "find_text": "Item", "match_mode": "substring"},
+    ])
+    assert result["results"][0]["status"] == "multi_match_error"
+
+
+@pytest.mark.asyncio
+async def test_clear_list_preview():
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "clear_list", "find_text": "First item"},
+    ], preview=True)
+    assert result["results"][0]["status"] == "would_apply"
+    assert result["results"][0]["paragraph_indices"] == [1]
+    svc.documents().batchUpdate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_clear_list_ignores_preset():
+    """clear_list needs no preset; an invalid one is not validated for it."""
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "clear_list", "find_text": "First item"},
+    ])
+    assert result["results"][0]["status"] == "applied"
+    assert "preset" not in result["results"][0]
+
+
+# --- ordering with other operations ---------------------------------
+
+@pytest.mark.asyncio
+async def test_set_list_shares_single_batch_with_other_operations():
+    """set_list and set_style land in one batchUpdate, ordered back-to-front."""
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "set_style", "find_text": "Findings", "style": "HEADING_1"},
+        {"action": "set_list", "from_text": "First item", "to_text": "Last item"},
+    ])
+    assert result["operations_applied"] == 2
+    assert svc.documents().batchUpdate.call_count == 1
+    requests = svc.documents().batchUpdate.call_args.kwargs["body"]["requests"]
+    assert len(requests) == 2
+    # descending by startIndex: the bullets (10) come before the heading (1)
+    assert "createParagraphBullets" in requests[0]
+    assert "updateParagraphStyle" in requests[1]
+    assert requests[1]["updateParagraphStyle"]["paragraphStyle"]["namedStyleType"] == "HEADING_1"
+
+
+@pytest.mark.asyncio
+async def test_clear_list_does_not_echo_unapplied_nesting_level():
+    """nesting_level is meaningless for clear_list, so it is not reported back."""
+    svc = _mock_docs_service(_bullet_doc())
+    result = await format_document(svc, "f1", [
+        {"action": "clear_list", "find_text": "First item", "nesting_level": 2},
+    ])
+    assert result["results"][0]["status"] == "applied"
+    assert "nesting_level" not in result["results"][0]
+    requests = svc.documents().batchUpdate.call_args.kwargs["body"]["requests"]
+    assert len(requests) == 1
+    assert "deleteParagraphBullets" in requests[0]

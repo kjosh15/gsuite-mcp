@@ -720,6 +720,29 @@ async def format_document(
       Multi-match returns error (no match_all support).
       Optional: inherit_list_formatting, nesting_level, list_id, text_style.
 
+    - set_list: Turn matched paragraphs into list items (createParagraphBullets).
+      {"action": "set_list", "find_text": "First item",
+       "preset": "BULLET_DISC_CIRCLE_SQUARE", "nesting_level": 0}
+      preset is any Docs BulletGlyphPreset. Default BULLET_DISC_CIRCLE_SQUARE
+      (unordered); use NUMBERED_DECIMAL_ALPHA_ROMAN for ordered. Others include
+      BULLET_CHECKBOX, BULLET_DIAMOND_CIRCLE_SQUARE, NUMBERED_DECIMAL_NESTED.
+      Invalid values return INVALID_PRESET.
+      nesting_level is optional (default 0); non-zero indents 36pt per level,
+      which is how Docs represents list depth.
+      Range form — bullets a whole run of consecutive paragraphs at once:
+      {"action": "set_list", "from_text": "First item", "to_text": "Last item",
+       "preset": "BULLET_DISC_CIRCLE_SQUARE"}
+      Both endpoints must match exactly one paragraph; everything from the
+      from_text paragraph through the to_text paragraph is bulleted inclusive.
+      A backwards range is reported as invalid_range.
+
+    - clear_list: Remove bullets from matched paragraphs (deleteParagraphBullets).
+      {"action": "clear_list", "find_text": "First item"}
+      No preset. Supports the same from_text/to_text range form.
+
+    set_list and clear_list report paragraph_indices — every paragraph affected
+    — in both preview and applied results.
+
     Matching rules:
     - find_text matching is exact (strip + case-fold) by default.
     - Add "substring": true on an operation for substring matching.
@@ -727,13 +750,24 @@ async def format_document(
       case-insensitive). Invalid patterns return INVALID_REGEX error.
     - "match_mode" takes precedence over "substring" flag. Valid values:
       "exact" (default), "substring", "regex".
-    - If a delete or set_style matches multiple paragraphs, it fails with
-      a multi_match_error listing all matches (paragraph index + text snippet).
+    - If a delete, set_style, set_list or clear_list matches multiple
+      paragraphs, it fails with a multi_match_error listing all matches
+      (paragraph index + text snippet).
       Pass "match_all": true on the operation to apply to all matches.
+      For the set_list/clear_list range form, each endpoint must resolve to a
+      single paragraph; an ambiguous endpoint returns the same
+      multi_match_error shape, naming which endpoint was ambiguous.
 
     Top-level options:
     - preview: If true, returns what each operation would affect (paragraph
       index + first 80 chars + action) without executing any changes.
+
+    All operations are applied in one batchUpdate, ordered back-to-front
+    through the document, so index shifts from earlier operations in the same
+    call are handled and ordering is predictable.
+
+    The same operation schema is accepted by gdoc_template_populate's
+    post_styles argument.
 
     Only works on Google Docs (mimeType application/vnd.google-apps.document).
     Refuses trashed files with error: TRASHED_FILE."""
@@ -926,8 +960,17 @@ async def gdoc_template_populate(
     conversion, places it in the specified parent folder, then issues a single
     documents.batchUpdate with replaceAllText for each placeholder.
 
-    Optionally applies paragraph formatting operations (same schema as
-    format_document) after placeholder replacement via post_styles.
+    Optionally applies paragraph formatting operations after placeholder
+    replacement via post_styles. post_styles takes exactly the same operation
+    schema as format_document's `operations` argument — the same actions
+    (set_style, set_text_style, set_list, clear_list, delete, delete_by_index,
+    delete_empty_after, insert_paragraph, insert_paragraph_after_match), the
+    same find_text / substring / match_mode / match_all matching rules, and the
+    same from_text/to_text range form for set_list and clear_list. Anything
+    format_document accepts, post_styles accepts. The operations run as one
+    batchUpdate against the newly created doc, after the replacements land, and
+    their result is returned under "post_styles_result". preview is not
+    available here — post_styles always executes.
 
     Returns {file_id, web_view_link, replacements_made: {placeholder: count}}.
     """
