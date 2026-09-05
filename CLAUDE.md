@@ -89,6 +89,23 @@ Optional:
 
 ## Key Constraints
 
+- **A silent scheduled morning is NOT a problem with this service. Do not debug it here.**
+  Established 2026-08-25, re-confirmed 2026-09-04. On every affected morning Cloud Run
+  logged zero errors **and zero inbound requests** — the client never dialled. Cold start
+  was tested against the request logs and ruled out: the service is held warm by a
+  5-minute Cloud Scheduler ping (12/hour, no gaps), `/warmup` answered 200 in 2.6ms at
+  02:55, and measured p99 is 5.1s. The failure is upstream, in Claude Code's
+  connector-attach step, and is a known platform defect (~15 issues on
+  `anthropics/claude-code`, most closed "not planned"; #43397, #35899, #36327, and #40835
+  — editing any scheduled task silently disables connectors on existing tasks).
+  **When a scheduled run goes silent, check `derived_state.permission_mode` and the run's
+  duration first, then the HEARTBEATS ledger — not this service.** A ~74s run matches
+  health-sentinel's preflight-abort arithmetic; a frozen run sits at
+  `worker_status = requires_action` on an unanswered permission prompt.
+  To falsify this: find an affected morning where Cloud Run logs a request that errored or
+  timed out. None has been found. Roughly a month of local debugging here preceded the one
+  web search that found the defect already documented.
+
 - `GET /warmup` pre-warms `auth._cached_credentials` (a process-global OAuth token, refreshed via a real network call to Google's token endpoint on first use — see `auth.get_credentials()`) without making any Drive/Docs/Gmail API call. Still gated by `APIKeyMiddleware` like every other path. Added because the Cloud Run `gdrive-mcp-keepwarm` Scheduler job (pings `/` every 5m) keeps the container process warm but never calls an authenticated tool, so it never exercises the OAuth-refresh path — the first real tool call on a given process still pays that cost. A second Scheduler job hits `/warmup` shortly before the earliest scheduled caller (daily-briefing at 03:05 UTC) so that cost is paid ahead of time instead of during the real call.
 - Auth is API-key only (bearer or `?key=`). The middleware returns **404** for OAuth discovery paths (`/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`, `/.well-known/openid-configuration`) *before* the key check — a `401` there makes claude.ai attempt OAuth Dynamic Client Registration, which fails ("Couldn't register with the sign-in service") and repeatedly drops the connector. The 404 lets the client fall back to the `?key=` URL.
 - No database, no state, no LLM calls
