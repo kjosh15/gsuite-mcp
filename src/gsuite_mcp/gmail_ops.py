@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import html
 import re
 from email.mime.text import MIMEText
 from email.utils import formatdate
@@ -24,6 +25,54 @@ def _make_reply_subject(original_subject: str) -> str:
     return f"Re: {stripped}"
 
 
+_HTML_TAG_RE = re.compile(
+    r"</?(?:p|br|div|ul|ol|li|a|b|i|strong|em|span|table)\b[^>]*>", re.IGNORECASE
+)
+_BULLET_RE = re.compile(r"^(?:[-*] |\u2022)\s*")
+# A line at least this long that ends in a newline was hard-wrapped, not broken.
+_HARD_WRAP_MIN_CHARS = 60
+
+
+def _join_lines(lines: list[str]) -> str:
+    """Join escaped lines: hard wraps become spaces, short-line breaks <br>."""
+    out = lines[0]
+    for prev, line in zip(lines, lines[1:]):
+        out += (" " if len(prev) >= _HARD_WRAP_MIN_CHARS else "<br>") + line
+    return out
+
+
+def _html_body(body: str, content_type: str) -> str:
+    """Return body as HTML, converting plain text so Gmail never shows hard wraps.
+
+    A body containing common HTML tags passes through unchanged. Anything else is
+    treated as plain text whatever content_type says, because "html" is the
+    default and callers omitting it still send hard-wrapped plain text. Plain
+    text: blank lines separate <p> paragraphs; inside a paragraph a break
+    after a 60+ char line is a hard wrap (joined with a space) and a break after
+    a shorter line becomes <br>; paragraphs starting with "- ", "* " or "\u2022"
+    become a <ul>, continuation lines joining onto the previous <li>.
+    """
+    if _HTML_TAG_RE.search(body):
+        return body
+    text = body.replace("\r\n", "\n").strip()
+    parts = []
+    for para in re.split(r"\n\s*\n", text):
+        lines = [line.strip() for line in para.split("\n") if line.strip()]
+        if not lines:
+            continue
+        if _BULLET_RE.match(lines[0]):
+            items: list[str] = []
+            for line in lines:
+                if _BULLET_RE.match(line):
+                    items.append(html.escape(_BULLET_RE.sub("", line, count=1)))
+                else:
+                    items[-1] += " " + html.escape(line)
+            parts.append("<ul>" + "".join(f"<li>{i}</li>" for i in items) + "</ul>")
+        else:
+            parts.append("<p>" + _join_lines([html.escape(x) for x in lines]) + "</p>")
+    return "".join(parts)
+
+
 async def create_reply_draft(
     gmail_service,
     thread_id: str,
@@ -33,7 +82,7 @@ async def create_reply_draft(
     cc: Optional[str] = None,
     bcc: Optional[str] = None,
     subject: Optional[str] = None,
-    content_type: str = "plain",
+    content_type: str = "html",
 ) -> dict[str, Any]:
     """Create a Gmail draft replying to a specific message in a thread.
 
@@ -42,11 +91,13 @@ async def create_reply_draft(
         thread_id: Gmail thread ID to attach the draft to.
         in_reply_to_message_id: Gmail message ID of the message being replied to.
         to: Recipient email address.
-        body: Draft body text (plain or HTML).
+        body: Draft body, HTML or plain text (plain is converted to HTML).
         cc: Optional CC recipients.
         bcc: Optional BCC recipients.
         subject: Optional subject override. Auto-generates 'Re: <original>' if omitted.
-        content_type: 'plain' (default) or 'html'.
+        content_type: 'html' (default) or 'plain'. Advisory only: the draft is
+            always text/html, and any body without HTML tags is converted by
+            _html_body.
 
     Returns:
         dict with draft_id, message_id, thread_id, in_reply_to, subject, to,
@@ -68,9 +119,8 @@ async def create_reply_draft(
     if subject is None:
         subject = _make_reply_subject(original_subject)
 
-    # 3. Build MIME message
-    mime_subtype = "html" if content_type == "html" else "plain"
-    msg = MIMEText(body, mime_subtype)
+    # 3. Build MIME message. Always text/html: plain drafts render hard-wrapped.
+    msg = MIMEText(_html_body(body, content_type), "html", "utf-8")
     msg["To"] = to
     msg["Subject"] = subject
     if cc:

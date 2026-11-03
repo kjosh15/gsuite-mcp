@@ -1521,7 +1521,7 @@ async def create_reply_draft(
     cc: Optional[str] = None,
     bcc: Optional[str] = None,
     subject: Optional[str] = None,
-    content_type: str = "plain",
+    content_type: str = "html",
 ) -> dict[str, Any]:
     """Create a Gmail draft replying to a message in a thread.
 
@@ -1533,11 +1533,13 @@ async def create_reply_draft(
         thread_id: Gmail thread ID.
         in_reply_to_message_id: Gmail message ID being replied to.
         to: Recipient email address.
-        body: Draft body (plain text or HTML).
+        body: Draft body, HTML or plain text. Plain text is converted to HTML
+            (paragraphs, unwrapped lines, bullet lists) so Gmail never shows
+            hard wraps.
         cc: Optional CC recipients.
         bcc: Optional BCC recipients.
         subject: Override auto-generated 'Re: <original subject>'.
-        content_type: 'plain' (default) or 'html'.
+        content_type: 'html' (default) or 'plain'. The draft is always text/html.
     """
     return await gmail_ops.create_reply_draft(
         gmail_service=auth.get_gmail_service(),
